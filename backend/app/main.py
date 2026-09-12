@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-app = FastAPI(title="SmartSwipe API")
+app = FastAPI(title="CreditPick API")
 
 
 @app.get("/health")
