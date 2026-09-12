@@ -5,24 +5,15 @@ Everything that translates between them lives here, so the engine stays
 unit-testable with no server, no DB, and no network.
 
 `credit_limit` is the one field Nessie does not provide that the engine needs:
-the Nessie account object has no such field, and every utilization figure, the
-risk term, and both disqualifiers divide by it. It must be set locally per
-account. An account missing it is surfaced rather than silently defaulted.
+the Nessie account object has no such field, and both disqualifiers divide by
+it. It must be set locally per account. An account missing it is surfaced
+rather than silently defaulted.
 """
 
 from app.scoring import rewards
 
-# What one FICO point is worth in dollars, the exchange rate that lets reward
-# and credit damage be compared in the same unit.
-DEFAULT_DOLLARS_PER_FICO_POINT = 2.0
 
-# The user's starting FICO. Utilization damage scales with it -- the same
-# maxed-out wallet costs a 790 profile roughly three times what it costs a 600
-# profile -- so this is a real input, not a cosmetic field.
-DEFAULT_BASELINE_SCORE = 740.0
-
-
-def build_wallet(accounts, catalog=None, baseline_score=DEFAULT_BASELINE_SCORE):
+def build_wallet(accounts, catalog=None, utilization_ceiling=None):
     """Turn LinkedAccount rows into (cards, state) for the engine.
 
     Accounts are keyed by `linked_account_id` so two accounts mapped to the
@@ -30,8 +21,7 @@ def build_wallet(accounts, catalog=None, baseline_score=DEFAULT_BASELINE_SCORE):
 
     - `card_product_id` is null -- synced but not mapped to a real card, so we
       have no reward data and will not guess one (docs/PLAN.md §4)
-    - `credit_limit` is null or zero -- every utilization figure, the risk
-      penalty, and both disqualifiers divide by it
+    - `credit_limit` is null or zero -- both disqualifiers divide by it
 
     Returns (cards, state, skipped).
     """
@@ -86,8 +76,7 @@ def build_wallet(accounts, catalog=None, baseline_score=DEFAULT_BASELINE_SCORE):
         }
 
     state = {
-        "dollars_per_fico_point": DEFAULT_DOLLARS_PER_FICO_POINT,
-        "baseline_score": baseline_score,
+        "utilization_ceiling": utilization_ceiling,
         "cards": card_states,
     }
     return cards, state, skipped
@@ -96,19 +85,15 @@ def build_wallet(accounts, catalog=None, baseline_score=DEFAULT_BASELINE_SCORE):
 # --- demo wallet -----------------------------------------------------------
 
 
-def demo_wallet(baseline_score=DEFAULT_BASELINE_SCORE):
+def demo_wallet(utilization_ceiling=None):
     """Seeded wallet used when no accounts are linked yet.
-
-    Deliberately rigged so the interesting cases are reachable: one card at
-    68% utilization, and one sitting just under a step threshold.
 
     The limits here are stand-ins for values the user would enter by hand --
     Nessie publishes none of them. Anything entered via PUT /cards/{card}/limit
     overrides them (see app/scoring/limits.py).
     """
     state = {
-        "dollars_per_fico_point": DEFAULT_DOLLARS_PER_FICO_POINT,
-        "baseline_score": baseline_score,
+        "utilization_ceiling": utilization_ceiling,
         "cards": {
             "amex_bcp": {
                 "linked_account_id": 1,

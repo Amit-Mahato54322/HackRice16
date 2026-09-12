@@ -19,8 +19,8 @@ from app.scoring.categorize import categorize
 router = APIRouter(tags=["recommend"])
 
 # Fixed 30% threshold for the dashboard's utilization flag (docs/PLAN.md §7).
-# This is a *display* threshold only -- the ranking prices utilization through
-# the engine's risk term rather than flagging it.
+# Display only: it colours a row. What actually excludes a card is the user's
+# own ceiling, passed per request as max_utilization.
 UTILIZATION_FLAG_THRESHOLD = 0.30
 
 AUDIO_PLACEHOLDER = "/mock/recommend-audio-placeholder"
@@ -30,18 +30,18 @@ class RecommendRequest(BaseModel):
     merchant: str = Field(..., examples=["HEB"])
     amount: float = Field(..., gt=0, examples=[80.0])
     # Nessie's merchant catalog supplies this during the real pipeline; it
-    
     # overrides the keyword map when present (docs/PLAN.md §7 edge cases).
     category: str | None = None
+    # The user's own utilization tolerance, as a fraction -- 0.3 for "keep me
+    # under 30%". Any card the purchase would push past it is refused, however
+    # well it pays. Omitted means no ceiling beyond the hard decline limit.
+    max_utilization: float | None = Field(default=None, gt=0, le=1)
 
 
-def _card_payload(scored, state, amount):
+def _card_payload(scored, state):
     """One ranked card, in the M1 contract's shape plus the scoring detail."""
     card_state = state["cards"][scored["card"]]
-    limit = card_state.get("limit") or 0.0
-    projected = (
-        (card_state.get("balance", 0.0) + amount) / limit if limit > 0 else 0.0
-    )
+    projected = scored["utilization"] or 0.0
 
     return {
         # --- M1 contract fields, unchanged ---
@@ -63,7 +63,7 @@ def recommend(request: RecommendRequest):
     # Until /nessie/sync lands (M3) there are no LinkedAccount rows to read, so
     # this scores the seeded demo wallet. Swapping in adapter.build_wallet(...)
     # with real rows is the only change needed here.
-    cards, state = adapter.demo_wallet()
+    cards, state = adapter.demo_wallet(utilization_ceiling=request.max_utilization)
 
     # Credit limits are user-entered (PUT /cards/{card}/limit) because no API
     # in the stack publishes them. Anything entered overrides the seeded value.
@@ -72,9 +72,7 @@ def recommend(request: RecommendRequest):
     category = request.category or categorize(request.merchant)
     result = engine.rank(state, category, request.amount, cards)
 
-    ranked = [
-        _card_payload(card, state, request.amount) for card in result["all_cards"]
-    ]
+    ranked = [_card_payload(card, state) for card in result["all_cards"]]
 
     disqualified = [
         {

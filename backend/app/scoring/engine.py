@@ -4,71 +4,57 @@ Pure Python: data in, data out. No framework imports, no database, no network,
 no LLM calls. Every number is arithmetic you can point at -- if a judge asks
 how a figure was produced, we trace it line by line.
 
-Each card is scored in dollars:
+The engine answers one question: of the cards you own, which should pay for
+this purchase?
 
-    score = reward - risk
+    maximize  reward
+    subject to  resulting utilization <= the user's ceiling
 
-Scope note: Nessie is the only external API in the stack, supplying balances,
-purchase history and merchant categories. Reward rates come from a small local
-catalog (see rewards.py) because no API publishes them. Category caps, sign-up
-bonuses and purchase-protection terms are deliberately absent: modelling them
-would mean inventing cap-usage and claim figures no source publishes, so the
-output would be driven by our assumptions rather than by data.
+Reward is a rate lookup. The interesting half is the constraint: a card that
+would push utilization past the ceiling is refused no matter what it pays, so
+the engine will hand back a 2% card in place of a 5% one. That is a trade no
+rewards app makes.
 
-Statement timing is absent for the same reason: Nessie exposes no statement
-close date or billing cycle, so the float term and the "pay it down before it
-reports" discount both ran on dates we made up.
+The ceiling is a **user input**, not our estimate. An earlier version priced
+utilization damage in dollars instead, which needed three sets of numbers no
+source publishes -- FICO step thresholds, a dollar value per FICO point, and
+how that scales with a starting score. Every one of those was an assumption
+dressed as a measurement. A ceiling the user sets needs none of them: it is
+their tolerance, applied to arithmetic on their real balances and limits.
 
-The tradeoff is that `reward` is a straight rate lookup. The modelling that
-remains is `risk_term`, which prices utilization damage in dollars instead of
-flagging it -- which is still a trade no rewards app makes.
+Also absent, for the same reason: category caps, sign-up bonuses, purchase
+protection (no API publishes cap usage or claim rates), and statement timing
+(Nessie exposes no billing cycle).
 """
 
 # --- tunable coefficients (no magic numbers inline) -------------------------
 
-# FICO damage from utilization is not linear; it steps at thresholds.
-#
-# The breakpoints sit just *under* the round numbers -- 28.9% rather than 30%
-# -- which matters: a card at 29.5% has already crossed. Reported consistently
-# by practitioners (myFICO); FICO does not publish them, so these are
-# well-sourced folklore rather than peer-reviewed figures.
-PER_CARD_FICO_STEPS = [(0.289, 0), (0.489, 8), (0.689, 15), (0.889, 25)]
-
-# FICO scores per-card *and* overall utilization, and the aggregate figure has
-# an extra low breakpoint at 8.9% that per-card does not. Aggregate damage is
-# the larger of the two effects, so the magnitudes live here rather than in a
-# separate weighting constant.
-AGGREGATE_FICO_STEPS = [(0.089, 0), (0.289, 10), (0.489, 25), (0.689, 45), (0.889, 70)]
-
-# The same utilization damage costs a high scorer far more points than a low
-# one: maxing out cards runs ~110-130 points off a ~790 profile but only ~30-50
-# off a ~600 profile. Anchors for a linear interpolation, so the risk term
-# scales with who the user actually is instead of assuming one profile.
-SCORE_SENSITIVITY_ANCHORS = [(600.0, 40.0), (790.0, 120.0)]
-REFERENCE_SCORE = 740.0
-DEFAULT_BASELINE_SCORE = 740.0
-
-# A purchase that would take a card past this fraction of its limit is
-# excluded: the charge is likely to be declined at the terminal, so
-# recommending the card would be useless rather than merely expensive.
+# A purchase that would take a card past this fraction of its limit is excluded
+# regardless of any user ceiling: the charge is likely to be declined at the
+# terminal, so recommending the card would be useless rather than expensive.
 MAX_UTIL_RATIO = 0.95
-
-DEFAULT_CATEGORY = "other"
 
 
 # --- rates -----------------------------------------------------------------
 
 
 def effective_rate(card, category):
-    """Rate for this category, in dollars per dollar spent."""
+    """Rate for this category in dollars per dollar spent, after point value."""
     return card["rates"].get(category, card["base_rate"]) * card["point_value"]
 
 
-def base_effective_rate(card):
-    return card["base_rate"] * card["point_value"]
+# --- utilization -----------------------------------------------------------
 
 
-# --- scoring terms ---------------------------------------------------------
+def projected_utilization(card_state, amount):
+    """Where this card lands if the purchase goes on it. None if unknowable."""
+    limit = card_state.get("limit") or 0.0
+    if limit <= 0:
+        return None
+    return (card_state.get("balance", 0.0) + amount) / limit
+
+
+# --- scoring ---------------------------------------------------------------
 
 
 def reward_term(card, amount, category):
@@ -88,153 +74,65 @@ def reward_term(card, amount, category):
     }
 
 
-def fico_cost(util, steps=None):
-    """FICO points lost at this utilization. A step function, not a curve.
+def disqualify(card_state, amount, ceiling=None):
+    """Reason this card cannot be used, or None.
 
-    Every source treats utilization as thresholds rather than a smooth curve,
-    so this deliberately does not interpolate.
-    """
-    cost = 0
-    for threshold, points in steps or PER_CARD_FICO_STEPS:
-        if util >= threshold:
-            cost = points
-    return cost
-
-
-def score_sensitivity(baseline_score):
-    """How much one utilization step costs *this* user, relative to average.
-
-    Linear interpolation between the anchor profiles, clamped outside them.
-    Returns a multiplier on the point costs, 1.0 at the reference score.
-    """
-    (low_score, low_damage), (high_score, high_damage) = SCORE_SENSITIVITY_ANCHORS
-
-    def damage(score):
-        score = max(low_score, min(high_score, float(score)))
-        span = high_score - low_score
-        return low_damage + (score - low_score) / span * (high_damage - low_damage)
-
-    return damage(baseline_score) / damage(REFERENCE_SCORE)
-
-
-def aggregate_utilization(state, exclude_id=None, extra=0.0):
-    """Total balance over total limit across the whole wallet."""
-    balance = 0.0
-    limit = 0.0
-    for card_id, card_state in state["cards"].items():
-        card_limit = card_state.get("limit") or 0.0
-        if card_limit <= 0:
-            continue
-        balance += card_state.get("balance", 0.0)
-        limit += card_limit
-        if card_id == exclude_id:
-            balance += extra
-    return (balance / limit) if limit > 0 else 0.0
-
-
-def risk_term(card_state, amount, state, card_id=None):
-    """Dollar-denominated cost of the FICO damage this purchase would do.
-
-    The differentiator: utilization is priced, not merely flagged, so the
-    engine can decline cash back to protect a score. Three inputs no rewards
-    app combines -- the per-card step crossing, the aggregate step crossing,
-    and how much a point is worth to this particular user, which scales with
-    their baseline score.
-    """
-    limit = card_state.get("limit") or 0.0
-    if limit <= 0:
-        return 0.0
-    balance = card_state.get("balance", 0.0)
-    per_point = state.get("dollars_per_fico_point", 2.0)
-
-    per_card = fico_cost((balance + amount) / limit) - fico_cost(balance / limit)
-
-    old_aggregate = aggregate_utilization(state)
-    new_aggregate = aggregate_utilization(state, exclude_id=card_id, extra=amount)
-    aggregate = fico_cost(new_aggregate, AGGREGATE_FICO_STEPS) - fico_cost(
-        old_aggregate, AGGREGATE_FICO_STEPS
-    )
-
-    sensitivity = score_sensitivity(state.get("baseline_score", DEFAULT_BASELINE_SCORE))
-    return (per_card + aggregate) * per_point * sensitivity
-
-
-# --- disqualifiers ---------------------------------------------------------
-
-
-def disqualify(card_state, amount):
-    """Reason this card cannot be used at all, or None.
-
-    Checked before scoring. A disqualified card is excluded from ranking but
-    still returned with its reason, so the UI can show why it was skipped
+    Checked before scoring. A disqualified card is excluded from the ranking
+    but still returned with its reason, so the UI can show what was skipped
     rather than silently dropping it.
 
-    Neither reason is a judgment call: a missing credit limit means utilization
-    cannot be computed at all, and a charge past 95% of the limit is likely to
-    be declined at the terminal. Nothing is excluded for being merely
-    expensive -- that is what the risk term is for.
+    Nothing here is an estimate. A missing credit limit means utilization
+    cannot be computed at all; 95% of the limit is where the charge starts
+    getting declined; and the ceiling is whatever the user said it was.
     """
-    limit = card_state.get("limit") or 0.0
-    if limit <= 0:
+    utilization = projected_utilization(card_state, amount)
+    if utilization is None:
         return "no credit limit on record"
 
-    projected = card_state.get("balance", 0.0) + amount
-    if projected > limit * MAX_UTIL_RATIO:
+    if utilization > MAX_UTIL_RATIO:
         return "would exceed %d%% of limit" % int(MAX_UTIL_RATIO * 100)
+
+    if ceiling is not None and utilization > ceiling:
+        return "would take utilization to %d%%, past your %d%% ceiling" % (
+            round(utilization * 100),
+            round(ceiling * 100),
+        )
 
     return None
 
 
-# --- explanation -----------------------------------------------------------
-
-
 def build_why(detail, category):
-    """One sentence naming the tradeoff. The client owns all other formatting."""
+    """One sentence naming the reason. The client owns all other formatting."""
     rate_pct = detail["rate"] * 100
-
     if detail["is_bonus_category"]:
-        why = "%.3g%% on %s" % (rate_pct, category)
-    else:
-        why = "%.3g%% flat" % rate_pct
-
-    if detail.get("risk", 0) > 0.005:
-        why += "; utilization damage costs $%.2f" % detail["risk"]
-
-    return why
+        return "%.3g%% on %s" % (rate_pct, category)
+    return "%.3g%% flat" % rate_pct
 
 
-# --- scoring ---------------------------------------------------------------
-
-
-def score_card(card_id, card, card_state, amount, category, state):
-    """Score one card in dollars, with every term broken out."""
+def score_card(card_id, card, card_state, amount, category):
+    """Score one card in dollars, with the utilization it would land at."""
     detail = reward_term(card, amount, category)
-    risk = risk_term(card_state, amount, state, card_id)
-
-    detail["risk"] = risk
-    score = detail["reward"] - risk
 
     return {
         "card": card_id,
         "card_name": card["name"],
-        "score": score,
+        "score": detail["reward"],
         "reward_rate": detail["rate"],
         "estimated_value": detail["reward"],
-        "breakdown": {
-            "reward": detail["reward"],
-            "risk": -risk,
-        },
+        "utilization": projected_utilization(card_state, amount),
+        "breakdown": {"reward": detail["reward"]},
         "why": build_why(detail, category),
         "detail": detail,
     }
 
 
 def rank(state, category, amount, cards):
-    """Rank every card in the wallet for this purchase, best first.
+    """Rank every eligible card for this purchase, best-paying first.
 
-    Returns eligible cards sorted by score, plus the disqualified ones with
-    their reasons so the UI can show what was skipped and why.
+    `state["utilization_ceiling"]` is the user's tolerance, as a fraction.
+    Absent or None means no ceiling beyond the hard decline limit.
     """
+    ceiling = state.get("utilization_ceiling")
     scored = []
     disqualified = []
 
@@ -242,13 +140,13 @@ def rank(state, category, amount, cards):
         card = cards.get(card_id)
         if card is None:
             continue
-        reason = disqualify(card_state, amount)
+        reason = disqualify(card_state, amount, ceiling)
         if reason:
             disqualified.append(
                 {"card": card_id, "card_name": card["name"], "reason": reason}
             )
             continue
-        scored.append(score_card(card_id, card, card_state, amount, category, state))
+        scored.append(score_card(card_id, card, card_state, amount, category))
 
     scored.sort(key=lambda r: r["score"], reverse=True)
     return {

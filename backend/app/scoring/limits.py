@@ -4,10 +4,9 @@ Nessie's account object has no credit limit field, and no API publishes one.
 The user does know it, though -- it is printed on their statement and shown in
 their banking app -- so it is entered by hand, per card, and stored here.
 
-This is user-supplied input, the same category as the baseline score and the
-"buying a house" toggle. It is not a figure we invented: a limit nobody has
-entered stays `None`, and the engine disqualifies that card with a reason
-rather than guessing a value.
+This is user-supplied input, the same category as the utilization ceiling. It
+is not a figure we invented: a limit nobody has entered stays `None`, and the
+engine disqualifies that card with a reason rather than guessing a value.
 
 In-memory on purpose. Once Postgres is running these belong on
 `LinkedAccount.credit_limit`, which already exists -- `set_limit` is then a
