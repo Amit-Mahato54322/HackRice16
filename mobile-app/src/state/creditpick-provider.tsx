@@ -9,29 +9,29 @@ import {
 import type { Purchase } from "@/domain/models";
 import { services as defaultServices } from "@/services";
 import type {
-  CardCueServices,
+  CreditPickServices,
   Recommendation,
   WalletSnapshot,
 } from "@/services/contracts";
-type CardCueState = {
+type CreditPickState = {
   purchase: Purchase;
   flowId: number;
   updatePurchase: (patch: Partial<Purchase>) => void;
   reset: () => void;
   threshold: number;
   setThreshold: (value: number) => void;
-  services: CardCueServices;
+  services: CreditPickServices;
   wallet: WalletSnapshot | null;
   walletError: string | null;
   reloadWallet: () => void;
   recommendation: Recommendation | null;
   compare: (signal: AbortSignal) => Promise<void>;
 };
-const CardCueContext = createContext<CardCueState | null>(null);
-export function CardCueProvider({
+const CreditPickContext = createContext<CreditPickState | null>(null);
+export function CreditPickProvider({
   children,
   services = defaultServices,
-}: PropsWithChildren<{ services?: CardCueServices }>) {
+}: PropsWithChildren<{ services?: CreditPickServices }>) {
   const [purchase, setPurchase] = useState<Purchase>({
     ...services.initialPurchase,
   });
@@ -63,7 +63,7 @@ export function CardCueProvider({
     setRecommendation(null);
   }
   return (
-    <CardCueContext.Provider
+    <CreditPickContext.Provider
       value={{
         purchase,
         flowId,
@@ -100,11 +100,11 @@ export function CardCueProvider({
       }}
     >
       {children}
-    </CardCueContext.Provider>
+    </CreditPickContext.Provider>
   );
 }
-export function useCardCue() {
-  const state = useContext(CardCueContext);
-  if (!state) throw new Error("useCardCue requires CardCueProvider");
+export function useCreditPick() {
+  const state = useContext(CreditPickContext);
+  if (!state) throw new Error("useCreditPick requires CreditPickProvider");
   return state;
 }

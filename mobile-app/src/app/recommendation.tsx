@@ -14,13 +14,13 @@ import {
   Sheet,
   s,
   TextAction,
-} from "@/components/cardcue";
+} from "@/components/creditpick";
 import { money } from "@/domain/models";
-import { useCardCue } from "@/state/cardcue-provider";
+import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 export default function RecommendationScreen() {
-  const { recommendation, reset, services } = useCardCue();
+  const { recommendation, reset, services } = useCreditPick();
   const [comparison, setComparison] = useState(false);
   const [transcript, setTranscript] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -64,7 +64,7 @@ export default function RecommendationScreen() {
         <Header title="Your best card" back />
         <Copy>Compare a purchase to get your recommendation.</Copy>
         <Button
-          title="Ask CardCue"
+          title="Ask CreditPick"
           onPress={() => router.replace("/conversation")}
         />
       </Screen>

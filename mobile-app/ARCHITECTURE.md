@@ -1,4 +1,4 @@
-# CardCue frontend boundaries
+# CreditPick frontend boundaries
 
 The current implementation is a local demo. No HTTP endpoints, vendor SDK sessions, authentication, recording, or backend audio playback are connected yet.
 
@@ -7,7 +7,7 @@ The current implementation is a local demo. No HTTP endpoints, vendor SDK sessio
 | Layer | Responsibility |
 | --- | --- |
 | `src/app` | Native navigation, rendering, input, loading/error states |
-| `src/state/cardcue-provider.tsx` | Wallet resource, purchase session, recommendation snapshot, invalidation |
+| `src/state/creditpick-provider.tsx` | Wallet resource, purchase session, recommendation snapshot, invalidation |
 | `src/domain/models.ts` | Shared types, currency formatting, input validation |
 | `src/services/contracts.ts` | Provider-neutral wallet, recommendation, conversation, voice and playback contracts |
 | `src/services/index.ts` | Select and inject implementations at one composition point |
@@ -18,7 +18,7 @@ Screens do not import mock data, rank cards, calculate projected balances, or ca
 
 ## Backend integration
 
-Implement `CardCueServices` and inject it into `CardCueProvider`, or change `src/services/index.ts`. No backend URL or endpoint schema is assumed yet. Keep HTTP response validation and conversion to these DTOs inside the adapter. `isDemo` and service `mode` distinguish demo data from live data; update the remaining demo-specific explanatory copy when enabling live mode.
+Implement `CreditPickServices` and inject it into `CreditPickProvider`, or change `src/services/index.ts`. No backend URL or endpoint schema is assumed yet. Keep HTTP response validation and conversion to these DTOs inside the adapter. `isDemo` and service `mode` distinguish demo data from live data; update the remaining demo-specific explanatory copy when enabling live mode.
 
 Monetary DTO fields currently use USD major units. If the backend uses integer cents, convert once at the adapter boundary. Rewards, ranking, eligibility, balance freshness, and financial calculations should remain backend-owned. Do not add duplicate frontend ranking rules. The app treats the response as a snapshot of the submitted purchase.
 

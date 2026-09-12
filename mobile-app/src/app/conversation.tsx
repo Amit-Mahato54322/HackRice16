@@ -22,9 +22,9 @@ import {
   Icon,
   IconButton,
   s,
-} from "@/components/cardcue";
+} from "@/components/creditpick";
 import { categories, money, Purchase, validateAmount } from "@/domain/models";
-import { useCardCue } from "@/state/cardcue-provider";
+import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 export default function ConversationScreen() {
@@ -35,7 +35,7 @@ export default function ConversationScreen() {
     updatePurchase,
     services,
     compare: requestComparison,
-  } = useCardCue();
+  } = useCreditPick();
   const [listening, setListening] = useState(typing !== "1");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -208,7 +208,7 @@ export default function ConversationScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.header}>
-          <Header title="Ask CardCue" back />
+          <Header title="Ask CreditPick" back />
         </View>
         <ScrollView
           ref={scroll}

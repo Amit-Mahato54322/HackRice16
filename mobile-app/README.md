@@ -1,4 +1,4 @@
-# CardCue
+# CreditPick
 
 A native React Native + Expo SDK 57 + TypeScript frontend demo. Warm off-white surfaces, forest-green cards and buttons, mint panels, and Feather line icons. No HTML, WebView, backend, authentication, bank integration, or microphone access.
 
@@ -32,7 +32,7 @@ The 30% default threshold is a configurable reminder, not a credit-score guarant
 
 ## Structure
 
-`src/theme.ts` holds design tokens; `src/components/cardcue.tsx` contains reusable UI. `src/domain` contains shared models; `src/state` owns the purchase session and async resources. `src/services/contracts.ts` defines replaceable wallet, recommendation, conversation, voice-session, and playback interfaces. `src/services/index.ts` selects the local implementations. Screens do not import mock data or perform card ranking. `src/app` uses Expo Router’s native stack plus Home / Wallet / Settings tabs.
+`src/theme.ts` holds design tokens; `src/components/creditpick.tsx` contains reusable UI. `src/domain` contains shared models; `src/state` owns the purchase session and async resources. `src/services/contracts.ts` defines replaceable wallet, recommendation, conversation, voice-session, and playback interfaces. `src/services/index.ts` selects the local implementations. Screens do not import mock data or perform card ranking. `src/app` uses Expo Router’s native stack plus Home / Wallet / Settings tabs.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for backend ownership, cancellation semantics, DTO conventions, and the future backend/ElevenLabs audio path. The contracts are integration boundaries, not an implemented backend connection.
 
