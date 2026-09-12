@@ -47,22 +47,17 @@ def nessie_post(path: str, body: dict) -> dict:
 def main():
     from app.models.user import User
     from app.models.linked_account import LinkedAccount
-    from passlib.context import CryptContext
 
     db = SessionLocal()
-    pwd_ctx = CryptContext(schemes=["bcrypt"])
 
-    # 1 — Demo user
+    # 1 — Demo user (no real auth in v1 — DEMO_USER_ID=1 hardcoded in all routers)
     user = db.query(User).filter_by(email="demo@creditpick.com").first()
     if not user:
-        user = User(
-            email="demo@creditpick.com",
-            password_hash=pwd_ctx.hash("demo1234"),
-        )
+        user = User(email="demo@creditpick.com", password_hash="unused")
         db.add(user)
         db.commit()
         db.refresh(user)
-        print(f"Created demo user  id={user.id}  email=demo@creditpick.com  password=demo1234")
+        print(f"Created demo user  id={user.id}  email=demo@creditpick.com")
     else:
         print(f"Demo user already exists  id={user.id}")
 
