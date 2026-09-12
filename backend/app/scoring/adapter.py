@@ -59,11 +59,13 @@ def build_wallet(
             )
             continue
 
-        # CardProduct.vectormint_card_id is used purely as the catalog key --
-        # the identifier of a real card product. No reward data is fetched
-        # from anywhere; rates come from card_db.json.
+        # VectorMint rates, cached at mapping time, with the local catalog as
+        # the fallback for anything not cached yet.
         product = getattr(account, "card_product", None)
-        card = rewards.lookup(catalog, getattr(product, "vectormint_card_id", None))
+        fallback = rewards.lookup(catalog, getattr(product, "vectormint_card_id", None))
+        card = rewards.normalize_reward_json(
+            getattr(product, "cached_reward_json", None), fallback
+        )
 
         if not card:
             skipped.append(
