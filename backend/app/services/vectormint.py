@@ -1,114 +1,117 @@
-"""VectorMint catalog client.
+"""VectorMint API client (https://www.vectormint.app/docs).
 
-If VECTORMINT_API_KEY is set, calls the live API (endpoint shapes to be
-confirmed against their docs — see docs/PLAN.md §9). If not, falls back to
-a built-in catalog so /cards/search and /cards/map work end-to-end today.
-The fallback also de-risks the live demo if VectorMint is unreachable.
+Real API only — VECTORMINT_API_KEY required in .env.
 
-Reward rates are dollar-value multipliers per dollar spent
-(e.g. 0.04 = 4% back equivalent). "base" is the fallback rate for any
-category not listed (see scoring formula, docs/PLAN.md §7).
+Normalization notes:
+- VectorMint expresses rates as multipliers in a reward currency
+  (e.g. Venture travel = 5x capital-one-miles). We convert to an effective
+  decimal rate: rate x currency estimated_point_value_usd
+  (5 x $0.01 = 0.05 = 5% back), which is what the scoring engine consumes.
+- Their category ids use dashes (online-shopping); we normalize to
+  underscores. "general-purchases" becomes our "base" rate.
+- The GET /cards/{id} detail endpoint 400s ("Card ID parameter is required")
+  as of 2026-09-12, so we cache the full card list (which embeds
+  reward_rules) and resolve single cards locally. Also quota-friendly:
+  ~3 requests total per process for the whole 212-card catalog.
 """
 
 import httpx
 
 from app.config import VECTORMINT_API_KEY
 
-VECTORMINT_BASE = "https://api.vectormint.com/v1"
+VECTORMINT_BASE = "https://api.vectormint.app/v1"
 
-FALLBACK_CATALOG = [
-    {
-        "vectormint_card_id": "fallback-chase-sapphire-preferred",
-        "display_name": "Chase Sapphire Preferred",
-        "issuer": "Chase",
-        "art_url": None,
-        "rewards": {"base": 0.01, "dining": 0.03, "travel": 0.02, "groceries": 0.03, "streaming": 0.03},
-    },
-    {
-        "vectormint_card_id": "fallback-capital-one-venture",
-        "display_name": "Capital One Venture Rewards",
-        "issuer": "Capital One",
-        "art_url": None,
-        "rewards": {"base": 0.02, "travel": 0.05},
-    },
-    {
-        "vectormint_card_id": "fallback-bofa-customized-cash",
-        "display_name": "Bank of America Customized Cash Rewards",
-        "issuer": "Bank of America",
-        "art_url": None,
-        "rewards": {"base": 0.01, "gas": 0.03, "online_shopping": 0.03, "groceries": 0.02},
-    },
-    {
-        "vectormint_card_id": "fallback-amex-gold",
-        "display_name": "American Express Gold",
-        "issuer": "American Express",
-        "art_url": None,
-        "rewards": {"base": 0.01, "dining": 0.04, "groceries": 0.04},
-    },
-    {
-        "vectormint_card_id": "fallback-citi-double-cash",
-        "display_name": "Citi Double Cash",
-        "issuer": "Citi",
-        "art_url": None,
-        "rewards": {"base": 0.02},
-    },
-    {
-        "vectormint_card_id": "fallback-discover-it",
-        "display_name": "Discover it Cash Back",
-        "issuer": "Discover",
-        "art_url": None,
-        "rewards": {"base": 0.01, "rotating": 0.05},
-    },
-    {
-        "vectormint_card_id": "fallback-amazon-prime-visa",
-        "display_name": "Amazon Prime Rewards Visa",
-        "issuer": "Chase",
-        "art_url": None,
-        "rewards": {"base": 0.01, "online_shopping": 0.05, "groceries": 0.02, "gas": 0.02, "dining": 0.02},
-    },
-    {
-        "vectormint_card_id": "fallback-wells-fargo-active-cash",
-        "display_name": "Wells Fargo Active Cash",
-        "issuer": "Wells Fargo",
-        "art_url": None,
-        "rewards": {"base": 0.02},
-    },
-]
+# Module-level caches — populated once per process
+_cards_by_id: dict[str, dict] | None = None
+_currency_values: dict[str, float] | None = None
 
 
-def _live() -> bool:
-    return bool(VECTORMINT_API_KEY)
+def _headers() -> dict:
+    if not VECTORMINT_API_KEY:
+        raise RuntimeError("VECTORMINT_API_KEY is not set in .env")
+    return {"Authorization": f"Bearer {VECTORMINT_API_KEY}"}
+
+
+def _get(path: str, params: dict | None = None) -> dict:
+    res = httpx.get(f"{VECTORMINT_BASE}{path}", params=params, headers=_headers(), timeout=20)
+    res.raise_for_status()
+    return res.json()
+
+
+def _load_currencies() -> dict[str, float]:
+    global _currency_values
+    if _currency_values is None:
+        data = _get("/reward-currencies")["data"]
+        _currency_values = {
+            c["id"]: c.get("estimated_point_value_usd") or 0.01 for c in data
+        }
+    return _currency_values
+
+
+def _load_catalog() -> dict[str, dict]:
+    global _cards_by_id
+    if _cards_by_id is None:
+        _cards_by_id = {}
+        page = 1
+        while True:
+            body = _get("/cards", params={"page": page, "limit": 100})
+            for card in body["data"]:
+                _cards_by_id[card["id"]] = card
+            if page * 100 >= body["meta"]["total"]:
+                break
+            page += 1
+    return _cards_by_id
+
+
+def _normalize_category(category_id: str) -> str:
+    if category_id == "general-purchases":
+        return "base"
+    return category_id.replace("-", "_")
+
+
+def _normalize_card(card: dict) -> dict:
+    """VectorMint card -> our internal shape with effective decimal rates."""
+    currencies = _load_currencies()
+    rewards: dict[str, float] = {}
+    for rule in card.get("reward_rules", []):
+        category = _normalize_category(rule["category_id"])
+        point_value = currencies.get(rule["reward_currency_id"], 0.01)
+        effective_rate = round(rule["rate"] * point_value, 4)
+        # Keep the best rate if multiple rules hit the same category
+        if effective_rate > rewards.get(category, 0.0):
+            rewards[category] = effective_rate
+
+    return {
+        "vectormint_card_id": card["id"],
+        "display_name": card["name"],
+        "issuer": card["issuer_id"].replace("-", " ").title(),
+        "art_url": None,
+        "annual_fee": card.get("annual_fee"),
+        "rewards": rewards,
+        # VectorMint has no merchant-level offer endpoint in the catalog data;
+        # merchant offers were a fallback-era concept. Scoring uses
+        # category rates + base until a real offer source exists.
+        "merchant_offers": {},
+    }
 
 
 def search_cards(q: str) -> list[dict]:
-    """Search the catalog by card name or issuer."""
-    if _live():
-        res = httpx.get(
-            f"{VECTORMINT_BASE}/cards",
-            params={"q": q},
-            headers={"Authorization": f"Bearer {VECTORMINT_API_KEY}"},
-        )
-        res.raise_for_status()
-        return res.json()
+    """Relevance-ranked search. Empty q returns the full catalog."""
+    if not q:
+        return [_normalize_card(c) for c in _load_catalog().values()]
 
-    q_lower = q.lower()
-    return [
-        c for c in FALLBACK_CATALOG
-        if q_lower in c["display_name"].lower() or q_lower in c["issuer"].lower()
-    ]
+    body = _get("/cards/search", params={"q": q})
+    catalog = _load_catalog()
+    results = []
+    for hit in body["data"]:
+        # Search results are summaries without reward_rules — resolve
+        # each hit against the cached full catalog.
+        full = catalog.get(hit["id"])
+        if full:
+            results.append(_normalize_card(full))
+    return results
 
 
 def get_card(vectormint_card_id: str) -> dict | None:
-    """Fetch one card with full reward data (cached into card_products on map)."""
-    if _live():
-        res = httpx.get(
-            f"{VECTORMINT_BASE}/cards/{vectormint_card_id}",
-            headers={"Authorization": f"Bearer {VECTORMINT_API_KEY}"},
-        )
-        res.raise_for_status()
-        return res.json()
-
-    return next(
-        (c for c in FALLBACK_CATALOG if c["vectormint_card_id"] == vectormint_card_id),
-        None,
-    )
+    card = _load_catalog().get(vectormint_card_id)
+    return _normalize_card(card) if card else None
