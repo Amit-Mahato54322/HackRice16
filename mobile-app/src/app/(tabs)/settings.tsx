@@ -41,14 +41,19 @@ export default function SettingsScreen() {
                 padding: 12,
                 borderRadius: 12,
                 backgroundColor:
-                  threshold === value ? theme.colors.green : theme.colors.mint,
+                  threshold === value
+                    ? theme.colors.accent
+                    : theme.colors.accentSurface,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <Copy
                 style={{
-                  color: threshold === value ? "#FFFFFF" : theme.colors.green,
+                  color:
+                    threshold === value
+                      ? theme.colors.onAccent
+                      : theme.colors.accent,
                 }}
               >
                 {value}%

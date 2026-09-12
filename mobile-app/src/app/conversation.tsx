@@ -241,7 +241,7 @@ export default function ConversationScreen() {
                     width: 3,
                     height,
                     borderRadius: 3,
-                    backgroundColor: theme.colors.greenLight,
+                    backgroundColor: theme.colors.accentBright,
                     transform: [
                       {
                         scaleY: wave.interpolate({
@@ -332,7 +332,7 @@ export default function ConversationScreen() {
                       style={[
                         styles.chip,
                         purchase.category === category && {
-                          backgroundColor: theme.colors.mintStrong,
+                          backgroundColor: theme.colors.accentSurfaceStrong,
                         },
                       ]}
                       onPress={() => {
@@ -347,6 +347,8 @@ export default function ConversationScreen() {
               ) : (
                 <>
                   <TextInput
+                    keyboardAppearance="dark"
+                    selectionColor={theme.colors.accent}
                     autoFocus
                     accessibilityLabel={`New ${editing}`}
                     value={draft}
@@ -385,6 +387,8 @@ export default function ConversationScreen() {
         <View style={{ paddingHorizontal: 24 }}>
           <View style={styles.composer}>
             <TextInput
+              keyboardAppearance="dark"
+              selectionColor={theme.colors.accent}
               ref={composer}
               accessibilityLabel="Type a message"
               placeholder="Type a message…"
@@ -445,7 +449,7 @@ const styles = StyleSheet.create({
     width: 112,
     height: 112,
     borderRadius: 56,
-    backgroundColor: "#EFF4EA",
+    backgroundColor: theme.colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -453,7 +457,7 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: "#E0EDDD",
+    backgroundColor: theme.colors.accentSurface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -461,7 +465,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#CEE2CB",
+    backgroundColor: theme.colors.accentSurfaceStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -484,13 +488,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: 12,
-    backgroundColor: "#EEF3E9",
+    backgroundColor: theme.colors.accentSurface,
     maxWidth: "100%",
   },
   chipText: {
     fontSize: 12,
     lineHeight: 18,
-    color: theme.colors.green,
+    color: theme.colors.accent,
     fontWeight: "500",
     flexShrink: 1,
   },
