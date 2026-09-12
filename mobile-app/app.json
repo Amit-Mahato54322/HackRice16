@@ -20,8 +20,6 @@
       },
       "predictiveBackGestureEnabled": false
     },
-
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -33,7 +31,8 @@
         {
           "backgroundColor": "#0A2E22"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
