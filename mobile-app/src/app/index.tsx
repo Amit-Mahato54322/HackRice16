@@ -32,12 +32,8 @@ export default function HomeScreen() {
   const cardWidth = Math.min(Math.min(width, 580) - 64, 360);
   const accessibleScroll = fontScale > 1.2 || height < 760;
   const HomeContainer = accessibleScroll ? ScrollView : View;
-  const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<WalletCardData | null>(null);
-  const cards =
-    wallet?.cards.filter(
-      (card) => expanded || wallet.featuredCardIds.includes(card.id),
-    ) ?? [];
+  const cards = wallet?.cards ?? [];
   function openConversation(typing: boolean) {
     router.push({
       pathname: "/conversation",
@@ -70,17 +66,6 @@ export default function HomeScreen() {
             <Copy accessibilityRole="header" style={styles.sectionTitle}>
               Your cards
             </Copy>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                expanded ? "Show featured cards" : "View all cards on Home"
-              }
-              accessibilityState={{ expanded }}
-              onPress={() => setExpanded((value) => !value)}
-              style={s.textAction}
-            >
-              <Copy style={s.link}>{expanded ? "Show less" : "View all"}</Copy>
-            </Pressable>
           </View>
           <View style={styles.cardList}>
             {walletError ? (
@@ -95,7 +80,7 @@ export default function HomeScreen() {
               />
             ) : (
               <ScrollView
-                key={`${expanded}-${cardWidth}`}
+                key={cardWidth}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 snapToInterval={cardWidth + 14}
@@ -103,7 +88,7 @@ export default function HomeScreen() {
                 disableIntervalMomentum
                 contentContainerStyle={{
                   gap: 14,
-                  paddingRight: Math.min(width, 580) - 32 - cardWidth,
+                  paddingHorizontal: (Math.min(width, 580) - cardWidth) / 2,
                   alignItems: "flex-start",
                 }}
               >
@@ -199,13 +184,13 @@ const styles = StyleSheet.create({
     }),
     fontStyle: "italic",
     fontWeight: "700",
-    fontSize: 39,
-    lineHeight: 49,
+    fontSize: 42,
+    lineHeight: 52,
     letterSpacing: -1.6,
     color: theme.colors.ink,
     textAlign: "center",
   },
-  brandDot: { fontSize: 39, lineHeight: 49, color: theme.colors.accent },
+  brandDot: { fontSize: 42, lineHeight: 52, color: theme.colors.accent },
   intro: { gap: 6, paddingHorizontal: 8, paddingTop: 12, paddingBottom: 20 },
   heading: {
     fontSize: 30,
@@ -222,14 +207,14 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   sectionTitle: { fontSize: 23, lineHeight: 30, fontWeight: "600" },
-  cardList: { flexShrink: 0 },
+  cardList: { flexShrink: 0, marginHorizontal: -16 },
   voiceDock: { alignItems: "center", paddingTop: 20, gap: 4 },
   askTitle: { fontSize: 20, lineHeight: 27, fontWeight: "600" },
   controls: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 20,
+    justifyContent: "space-between",
     paddingVertical: 12,
   },
   sideSlot: { width: 54, alignItems: "center" },

@@ -22,7 +22,7 @@ Press `i` for iOS or `a` for Android, or scan the QR code in an Expo Go version 
 - Tap any purchase chip to edit the store, category, or amount. Amounts must be $0.01–$2,500, with up to two decimal places.
 - “View comparison” opens a dismissible bottom sheet. “Hear recommendation” uses device text-to-speech and also displays a transcript, including when speech is unavailable. iOS silent mode can mute speech.
 - “Ask another question” restores the default purchase. Back navigation preserves edits.
-- “View all” expands all ten cards in the Home horizontal card carousel; “Show less” restores the featured cards. Tap a card to see its details. There are no Wallet or Settings screens.
+- All ten cards appear by default in the centered horizontal carousel. Adjacent card edges hint that more cards are available by swiping. Tap a card to see its details. There are no Wallet or Settings screens.
 
 ## Mock calculations
 
@@ -38,7 +38,7 @@ The fixed 30% demo threshold is a reminder, not a credit-score guarantee. All fi
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for backend ownership, cancellation semantics, DTO conventions, and the future backend/ElevenLabs audio path. The contracts are integration boundaries, not an implemented backend connection.
 
-Home has a centered italic serif wordmark, a horizontal credit-card carousel, and a bottom-centered microphone with a conversation shortcut on its right. At normal text sizes, only the card carousel scrolls left and right; the voice controls stay anchored. Recommendation details and speech transcripts open in sheets. Scrolling remains available for very short displays, accessibility text, the keyboard, and longer lists/conversations so content stays reachable.
+Home has a centered italic serif wordmark, a horizontal credit-card carousel, and a bottom-centered microphone with a conversation shortcut at the right edge. At normal text sizes, only the card carousel scrolls left and right; the voice controls stay anchored. Recommendation details and speech transcripts open in sheets. Scrolling remains available for very short displays, accessibility text, the keyboard, and longer lists/conversations so content stays reachable.
 
 ## Checks
 
