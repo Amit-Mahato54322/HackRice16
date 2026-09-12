@@ -48,9 +48,10 @@ SCORE_SENSITIVITY_ANCHORS = [(600.0, 40.0), (790.0, 120.0)]
 REFERENCE_SCORE = 740.0
 DEFAULT_BASELINE_SCORE = 740.0
 
-# Disqualifiers.
+# A purchase that would take a card past this fraction of its limit is
+# excluded: the charge is likely to be declined at the terminal, so
+# recommending the card would be useless rather than merely expensive.
 MAX_UTIL_RATIO = 0.95
-PROTECTION_MODE_UTIL = 0.30
 
 DEFAULT_CATEGORY = "other"
 
@@ -137,7 +138,8 @@ def risk_term(card_state, amount, state, card_id=None):
     The differentiator: utilization is priced, not merely flagged, so the
     engine can decline cash back to protect a score. Three inputs no rewards
     app combines -- the per-card step crossing, the aggregate step crossing,
-    and how much a point is worth to this particular user.
+    and how much a point is worth to this particular user, which scales with
+    their baseline score.
     """
     limit = card_state.get("limit") or 0.0
     if limit <= 0:
@@ -160,12 +162,17 @@ def risk_term(card_state, amount, state, card_id=None):
 # --- disqualifiers ---------------------------------------------------------
 
 
-def disqualify(card_state, amount, state):
+def disqualify(card_state, amount):
     """Reason this card cannot be used at all, or None.
 
     Checked before scoring. A disqualified card is excluded from ranking but
     still returned with its reason, so the UI can show why it was skipped
     rather than silently dropping it.
+
+    Neither reason is a judgment call: a missing credit limit means utilization
+    cannot be computed at all, and a charge past 95% of the limit is likely to
+    be declined at the terminal. Nothing is excluded for being merely
+    expensive -- that is what the risk term is for.
     """
     limit = card_state.get("limit") or 0.0
     if limit <= 0:
@@ -174,11 +181,6 @@ def disqualify(card_state, amount, state):
     projected = card_state.get("balance", 0.0) + amount
     if projected > limit * MAX_UTIL_RATIO:
         return "would exceed %d%% of limit" % int(MAX_UTIL_RATIO * 100)
-
-    if state.get("protection_mode") and projected / limit > PROTECTION_MODE_UTIL:
-        return "would push utilization over %d%% while protecting your score" % int(
-            PROTECTION_MODE_UTIL * 100
-        )
 
     return None
 
@@ -240,7 +242,7 @@ def rank(state, category, amount, cards):
         card = cards.get(card_id)
         if card is None:
             continue
-        reason = disqualify(card_state, amount, state)
+        reason = disqualify(card_state, amount)
         if reason:
             disqualified.append(
                 {"card": card_id, "card_name": card["name"], "reason": reason}

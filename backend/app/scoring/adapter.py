@@ -12,10 +12,9 @@ account. An account missing it is surfaced rather than silently defaulted.
 
 from app.scoring import rewards
 
+# What one FICO point is worth in dollars, the exchange rate that lets reward
+# and credit damage be compared in the same unit.
 DEFAULT_DOLLARS_PER_FICO_POINT = 2.0
-# "Buying a house in 12 months" -- the engine will give up cash back to protect
-# the score at this exchange rate.
-PROTECTION_MODE_DOLLARS_PER_FICO_POINT = 50.0
 
 # The user's starting FICO. Utilization damage scales with it -- the same
 # maxed-out wallet costs a 790 profile roughly three times what it costs a 600
@@ -23,12 +22,7 @@ PROTECTION_MODE_DOLLARS_PER_FICO_POINT = 50.0
 DEFAULT_BASELINE_SCORE = 740.0
 
 
-def build_wallet(
-    accounts,
-    catalog=None,
-    protection_mode=False,
-    baseline_score=DEFAULT_BASELINE_SCORE,
-):
+def build_wallet(accounts, catalog=None, baseline_score=DEFAULT_BASELINE_SCORE):
     """Turn LinkedAccount rows into (cards, state) for the engine.
 
     Accounts are keyed by `linked_account_id` so two accounts mapped to the
@@ -92,12 +86,7 @@ def build_wallet(
         }
 
     state = {
-        "dollars_per_fico_point": (
-            PROTECTION_MODE_DOLLARS_PER_FICO_POINT
-            if protection_mode
-            else DEFAULT_DOLLARS_PER_FICO_POINT
-        ),
-        "protection_mode": protection_mode,
+        "dollars_per_fico_point": DEFAULT_DOLLARS_PER_FICO_POINT,
         "baseline_score": baseline_score,
         "cards": card_states,
     }
@@ -107,7 +96,7 @@ def build_wallet(
 # --- demo wallet -----------------------------------------------------------
 
 
-def demo_wallet(protection_mode=False, baseline_score=DEFAULT_BASELINE_SCORE):
+def demo_wallet(baseline_score=DEFAULT_BASELINE_SCORE):
     """Seeded wallet used when no accounts are linked yet.
 
     Deliberately rigged so the interesting cases are reachable: one card at
@@ -118,12 +107,7 @@ def demo_wallet(protection_mode=False, baseline_score=DEFAULT_BASELINE_SCORE):
     overrides them (see app/scoring/limits.py).
     """
     state = {
-        "dollars_per_fico_point": (
-            PROTECTION_MODE_DOLLARS_PER_FICO_POINT
-            if protection_mode
-            else DEFAULT_DOLLARS_PER_FICO_POINT
-        ),
-        "protection_mode": protection_mode,
+        "dollars_per_fico_point": DEFAULT_DOLLARS_PER_FICO_POINT,
         "baseline_score": baseline_score,
         "cards": {
             "amex_bcp": {
