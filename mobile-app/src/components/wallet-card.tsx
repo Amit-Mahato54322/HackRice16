@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import type { WalletCard as WalletCardData } from "@/services/contracts";
 import { theme } from "@/theme";
+import { cardArt } from "./card-art";
 import { Copy, Icon, Leaf, s } from "./creditpick";
 
 /** Standard credit-card proportions; grows vertically for accessibility text. */
@@ -8,11 +9,40 @@ export function WalletCard({
   card,
   width,
   onPress,
+  index = 0,
 }: {
   card: WalletCardData;
   width: number;
   onPress: () => void;
+  index?: number;
 }) {
+  const art = cardArt(card.productId, card.issuer, index);
+  const source = art.image ?? (card.artUrl ? { uri: card.artUrl } : undefined);
+
+  // A real card image replaces the drawn face entirely; the details below sit
+  // on top of the drawn one only.
+  if (source) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${card.name}, ending in ${card.digits}. ${card.rewardSummary}. View card details`}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.card,
+          { width, minHeight: width / 1.586, padding: 0, overflow: "hidden" },
+          pressed && s.pressed,
+        ]}
+      >
+        <Image
+          source={source}
+          style={{ width: "100%", height: width / 1.586 }}
+          resizeMode="cover"
+          accessible={false}
+        />
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -20,7 +50,7 @@ export function WalletCard({
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
-        { width, minHeight: width / 1.586, backgroundColor: card.color },
+        { width, minHeight: width / 1.586, backgroundColor: art.background },
         pressed && s.pressed,
       ]}
     >
@@ -33,7 +63,7 @@ export function WalletCard({
           <Copy style={styles.digits}>•••• •••• •••• {card.digits}</Copy>
           <Copy style={styles.reward}>{card.rewardSummary}</Copy>
         </View>
-        <Icon name="wifi" size={22} color={theme.colors.cardMark} />
+        <Icon name="wifi" size={22} color={art.accent} />
       </View>
     </Pressable>
   );

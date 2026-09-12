@@ -14,6 +14,9 @@ class DashboardCard(BaseModel):
     is_configured: bool
     card_display_name: Optional[str] = None
     card_issuer: Optional[str] = None
+    # Identify the product so the client can pick its artwork and colours.
+    vectormint_card_id: Optional[str] = None
+    card_art_url: Optional[str] = None
 
     class Config:
         from_attributes = True

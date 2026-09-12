@@ -60,10 +60,36 @@ def _context(db: Session, purchase: PurchaseIn) -> dict:
 
     category = purchase.category or categorize(purchase.store)
     amount = purchase.amount or 0.0
-    result = engine.rank(state, category, amount, cards) if amount > 0 else {
-        "all_cards": [],
-        "disqualified": [],
-    }
+
+    # The wallet is reported whether or not there is anything to rank. Handing
+    # over an empty card list when the amount is simply unknown made Gemini
+    # announce that the user owns no cards -- true of the payload, false of
+    # the person.
+    wallet = [
+        {
+            "card_id": card_id,
+            "name": cards[card_id]["name"],
+            "credit_limit": card_state.get("limit") or None,
+            "current_balance": card_state.get("balance", 0.0),
+        }
+        for card_id, card_state in state["cards"].items()
+        if card_id in cards
+    ]
+
+    if amount <= 0:
+        return {
+            "purchase": {
+                "store": purchase.store,
+                "amount": amount,
+                "category": category,
+            },
+            "wallet": wallet,
+            "cards": [],
+            "skipped": [],
+            "ranking_available": False,
+        }
+
+    result = engine.rank(state, category, amount, cards)
 
     scored = []
     for card in result["all_cards"]:
@@ -90,11 +116,13 @@ def _context(db: Session, purchase: PurchaseIn) -> dict:
             "amount": amount,
             "category": category,
         },
+        "wallet": wallet,
         "cards": scored,
         "skipped": [
             {"name": item.get("card_name"), "reason": item["reason"]}
             for item in result["disqualified"]
         ],
+        "ranking_available": True,
     }
 
 
@@ -104,11 +132,36 @@ def _computed_sentence(context: dict) -> str:
     Deliberately the same facts in a plainer voice, so the fallback is a
     downgrade in fluency rather than in accuracy.
     """
+    purchase = context["purchase"]
     cards = context["cards"]
+
     if not cards:
+        # Usually nothing is wrong with the wallet -- we just do not know the
+        # purchase yet. Saying "no card can cover that" in that situation
+        # reads as a rejection, which is both wrong and discouraging.
+        missing = []
+        if not purchase["store"].strip():
+            missing.append("where you're shopping")
+        if not purchase["amount"]:
+            missing.append("roughly how much")
+        if missing:
+            return (
+                "I still need " + " and ".join(missing) + ". "
+                "Try something like \"shoes from Nike for $120\"."
+            )
+        if not context.get("wallet"):
+            return (
+                "You don't have a card linked yet. Link one and I'll compare "
+                "them for you."
+            )
+        if context["skipped"]:
+            reasons = "; ".join(
+                "%s (%s)" % (item["name"], item["reason"]) for item in context["skipped"]
+            )
+            return "None of your cards can take that right now: " + reasons + "."
         return (
-            "I don't have a card that can cover that yet. "
-            "Add an amount, or link a card to get a recommendation."
+            f"You have {len(context['wallet'])} cards linked, but none of them "
+            "can take that purchase right now."
         )
     best = cards[0]
     return (
@@ -117,6 +170,72 @@ def _computed_sentence(context: dict) -> str:
         f"{' at ' + context['purchase']['store'] if context['purchase']['store'] else ''}. "
         f"{best['why']}, worth about ${best['estimated_value']:,.2f}."
     )
+
+
+def _find_card(message: str, cards: list[dict]) -> dict | None:
+    """A card the user named, matched on any distinctive word in its name."""
+    words = set(re.findall(r"[a-z]+", message.lower()))
+    generic = {"card", "credit", "rewards", "the", "my", "bank", "of", "america"}
+    best, best_hits = None, 0
+    for card in cards:
+        name_words = set(re.findall(r"[a-z]+", card["name"].lower())) - generic
+        hits = len(name_words & words)
+        if hits > best_hits:
+            best, best_hits = card, hits
+    return best
+
+
+def _answer(message: str, context: dict) -> str:
+    """Answer the question from the computed ranking, without an LLM.
+
+    Gemini phrases this better, but it is a flaky free tier and a fallback
+    that ignores the question entirely gives the same sentence to "why?",
+    "what about my Sapphire?" and "which is best for travel?" -- which reads
+    as a broken app rather than a degraded one.
+    """
+    cards = context["cards"]
+    if not cards:
+        return _computed_sentence(context)
+
+    lowered = message.lower()
+    best = cards[0]
+    purchase = context["purchase"]
+
+    named = _find_card(message, cards)
+    if named and named is not best:
+        rank = cards.index(named) + 1
+        return (
+            f"{named['name']} would earn {named['why'].lower()}, about "
+            f"${named['estimated_value']:,.2f} -- that ranks {rank} of "
+            f"{len(cards)}. {best['name']} still pays more here, about "
+            f"${best['estimated_value']:,.2f}."
+        )
+    if named is best:
+        return (
+            f"Yes -- {best['name']} is the pick for this one. {best['why']}, "
+            f"worth about ${best['estimated_value']:,.2f}."
+        )
+
+    if any(word in lowered for word in ("why", "how come", "explain", "reason")):
+        answer = (
+            f"{best['name']} wins because it pays {best['why'].lower()} on "
+            f"{purchase['category']}, about ${best['estimated_value']:,.2f} back."
+        )
+        if len(cards) > 1:
+            runner = cards[1]
+            answer += (
+                f" Next best is {runner['name']} at about "
+                f"${runner['estimated_value']:,.2f}."
+            )
+        return answer
+
+    if any(word in lowered for word in ("all", "compare", "other", "alternative", "rest")):
+        lines = ", ".join(
+            f"{card['name']} ${card['estimated_value']:,.2f}" for card in cards
+        )
+        return f"For ${purchase['amount']:,.2f} at {purchase['store']}: {lines}."
+
+    return _computed_sentence(context)
 
 
 def _patch(raw: dict | None) -> dict | None:
@@ -138,7 +257,8 @@ _AMOUNT = re.compile(
     r"\$\s?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:dollars|bucks|usd)\b",
     re.IGNORECASE,
 )
-# "at Whole Foods", "from HEB" -- stops at a comma or a trailing clause.
+# "at Whole Foods", "from HEB", and "form HEB" -- that typo is common enough
+# to match, since the alternative is silently extracting nothing.
 # A bare number only counts when the sentence is clearly about spending:
 # "make it 600", "spend 45". Otherwise digits mean something else.
 _BARE_AMOUNT = re.compile(
@@ -147,7 +267,7 @@ _BARE_AMOUNT = re.compile(
     re.IGNORECASE,
 )
 _STORE = re.compile(
-    r"\b(?:at|from)\s+([A-Za-z][\w&'\-.]*(?:\s+[A-Za-z][\w&'\-.]*){0,2})",
+    r"\b(?:at|from|form|with)\s+([A-Za-z][\w&'\-.]*(?:\s+[A-Za-z][\w&'\-.]*){0,2})",
     re.IGNORECASE,
 )
 _STORE_STOPWORDS = {"the", "my", "a", "an", "least", "most", "home"}
@@ -189,7 +309,10 @@ def _local_patch(message: str) -> dict | None:
         while words and words[-1].lower() in _TRAILING:
             words.pop()
         if words and words[0].lower() not in _STORE_STOPWORDS:
-            patch["store"] = " ".join(words)
+            # "nike" -> "Nike", but leave HEB and BJ's alone.
+            patch["store"] = " ".join(
+                word.capitalize() if word.islower() else word for word in words
+            )
 
     return patch or None
 
@@ -220,14 +343,11 @@ def conversation(request: ConversationRequest, db: Session = Depends(get_db)):
         patch = _local_patch(request.message)
 
     # If they changed what they are buying, the answer is about the new
-    # purchase -- so re-rank before judging the reply. Otherwise a perfectly
-    # good sentence about $600 gets rejected for quoting a figure that only
-    # looks ungrounded because the context was still describing $90.
+    # purchase -- so re-rank before judging the reply.
     if patch:
         context = _context(db, _patched(request.purchase, patch))
 
-    computed = _computed_sentence(context)
-    reply = computed
+    reply = _answer(request.message, context)
     grounded = False
 
     if translated and translated.get("reply"):

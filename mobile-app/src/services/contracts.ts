@@ -6,6 +6,11 @@ export type WalletCard = CreditCard & {
   rewardSummary: string;
   available: number;
   utilization: number;
+  /** VectorMint product id, used to pick artwork. */
+  productId?: string;
+  issuer?: string;
+  /** Remote artwork, when the backend has one. */
+  artUrl?: string;
 };
 export type WalletSnapshot = {
   cards: WalletCard[];

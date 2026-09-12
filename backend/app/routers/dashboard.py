@@ -38,6 +38,10 @@ def get_dashboard(db: Session = Depends(get_db)):
             is_configured=acct.card_product_id is not None,
             card_display_name=acct.card_product.display_name if acct.card_product else None,
             card_issuer=acct.card_product.issuer if acct.card_product else None,
+            vectormint_card_id=(
+                acct.card_product.vectormint_card_id if acct.card_product else None
+            ),
+            card_art_url=acct.card_product.art_url if acct.card_product else None,
         ))
 
     return DashboardResponse(cards=cards)

@@ -2,6 +2,7 @@ import Feather from "@expo/vector-icons/Feather";
 import { router } from "expo-router";
 import { ComponentProps, PropsWithChildren } from "react";
 import {
+  Image,
   ActivityIndicator,
   ColorValue,
   Modal,
@@ -16,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CreditCard } from "@/domain/models";
+import { cardArt } from "./card-art";
 import type { WalletCard } from "@/services/contracts";
 import { theme } from "@/theme";
 
@@ -241,17 +243,48 @@ export function CardVisual({
   best = false,
   compact = false,
 }: {
-  card: CreditCard;
+  card: CreditCard & { productId?: string; issuer?: string; artUrl?: string };
   large?: boolean;
   best?: boolean;
   compact?: boolean;
 }) {
+  const art = cardArt(card.productId, card.issuer, 0);
+  const source = art.image ?? (card.artUrl ? { uri: card.artUrl } : undefined);
+
+  // Real artwork stands on its own; the drawn face is the fallback.
+  if (source) {
+    return (
+      <View
+        accessibilityLabel={`${card.name}, ending in ${card.digits}`}
+        style={[
+          s.card,
+          large ? s.largeCard : s.smallCard,
+          compact && { minHeight: 120 },
+          { padding: 0, overflow: "hidden", backgroundColor: art.background },
+        ]}
+      >
+        <Image
+          source={source}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+          accessible={false}
+        />
+        {large && best && (
+          <View style={[s.best, { position: "absolute", top: 12, right: 12 }]}>
+            <Icon name="check" size={12} color={c.cardInk} />
+            <Copy style={s.bestText}>Best match</Copy>
+          </View>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View
       accessibilityLabel={`${card.name}, ending in ${card.digits}`}
       style={[
         s.card,
-        { backgroundColor: card.color },
+        { backgroundColor: art.background },
         large ? s.largeCard : s.smallCard,
         compact && { minHeight: 120, padding: 12 },
       ]}
@@ -283,7 +316,7 @@ export function CardVisual({
           {large ? "•••• " : ""}
           {card.digits}
         </Copy>
-        {large && <Icon name="wifi" color={c.cardMark} size={22} />}
+        {large && <Icon name="wifi" color={art.accent} size={22} />}
       </View>
     </View>
   );
