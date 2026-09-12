@@ -12,9 +12,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Badge,
+  Button,
   CardVisual,
   Copy,
   Icon,
+  IconButton,
   Panel,
   Sheet,
   s,
@@ -33,6 +35,7 @@ export default function HomeScreen() {
   const accessibleScroll = fontScale > 1.2 || height < 760;
   const HomeContainer = accessibleScroll ? ScrollView : View;
   const [selected, setSelected] = useState<WalletCardData | null>(null);
+  const [showAddCard, setShowAddCard] = useState(false);
   const cards = wallet?.cards ?? [];
   function openConversation(typing: boolean) {
     router.push({
@@ -66,6 +69,11 @@ export default function HomeScreen() {
             <Copy accessibilityRole="header" style={styles.sectionTitle}>
               Your cards
             </Copy>
+            <IconButton
+              name="plus"
+              label="Add a card"
+              onPress={() => setShowAddCard(true)}
+            />
           </View>
           <View style={styles.cardList}>
             {walletError ? (
@@ -143,6 +151,25 @@ export default function HomeScreen() {
           </View>
         </View>
       </HomeContainer>
+      <Sheet
+        visible={showAddCard}
+        title="Add a card"
+        onClose={() => setShowAddCard(false)}
+      >
+        <Badge>Demo mode</Badge>
+        <Panel style={{ gap: 12 }}>
+          <Icon name="credit-card" size={32} />
+          <Copy style={s.bold}>Connect your cards here</Copy>
+          <Copy>
+            Card linking isn’t connected yet. Once the backend is available,
+            you’ll be able to add cards here and see them in your carousel.
+          </Copy>
+          <Copy style={s.small}>
+            No bank connection or card information is collected in this demo.
+          </Copy>
+        </Panel>
+        <Button title="Got it" onPress={() => setShowAddCard(false)} />
+      </Sheet>
       <Sheet
         visible={!!selected}
         title="Card details"
