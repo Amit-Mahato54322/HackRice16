@@ -9,14 +9,18 @@ Gemini audio extraction (M6) and ElevenLabs audio (M8) still land later; this
 route currently takes merchant and amount as JSON.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session, joinedload
 
-from app.mock import load_mock
+from app.db import get_db
+from app.models.linked_account import LinkedAccount
 from app.scoring import adapter, engine, limits
 from app.scoring.categorize import categorize
 
 router = APIRouter(tags=["recommend"])
+
+DEMO_USER_ID = 1  # replaced by JWT auth in M2
 
 # Fixed 30% threshold for the dashboard's utilization flag (docs/PLAN.md §7).
 # Display only: it colours a row. What actually excludes a card is the user's
@@ -59,14 +63,19 @@ def _card_payload(scored, state):
 
 
 @router.post("/recommend")
-def recommend(request: RecommendRequest):
-    # Until /nessie/sync lands (M3) there are no LinkedAccount rows to read, so
-    # this scores the seeded demo wallet. Swapping in adapter.build_wallet(...)
-    # with real rows is the only change needed here.
-    cards, state = adapter.demo_wallet(utilization_ceiling=request.max_utilization)
+def recommend(request: RecommendRequest, db: Session = Depends(get_db)):
+    accounts = (
+        db.query(LinkedAccount)
+        .options(joinedload(LinkedAccount.card_product))
+        .filter_by(user_id=DEMO_USER_ID)
+        .all()
+    )
+    cards, state, skipped = adapter.build_wallet(
+        accounts, utilization_ceiling=request.max_utilization
+    )
 
     # Credit limits are user-entered (PUT /cards/{card}/limit) because no API
-    # in the stack publishes them. Anything entered overrides the seeded value.
+    # in the stack publishes them; seed_nessie.py sets an initial value.
     limits.apply(state)
 
     category = request.category or categorize(request.merchant)
@@ -74,7 +83,10 @@ def recommend(request: RecommendRequest):
 
     ranked = [_card_payload(card, state) for card in result["all_cards"]]
 
-    disqualified = [
+    # Accounts the engine could not score at all -- not mapped to a card
+    # product, or no reward data for the one they are mapped to -- are listed
+    # alongside the ones it scored and refused, so nothing vanishes silently.
+    disqualified = skipped + [
         {
             "linked_account_id": state["cards"][d["card"]].get("linked_account_id"),
             "display_name": d["card_name"],
@@ -83,27 +95,11 @@ def recommend(request: RecommendRequest):
         for d in result["disqualified"]
     ]
 
-    if not ranked:
-        # Nothing usable -- say so plainly rather than failing silently
-        # (docs/PLAN.md §7 edge cases). The fixture keeps the shape stable.
-        payload = load_mock("recommend.json")
-        payload.update(
-            {
-                "merchant": request.merchant,
-                "amount": request.amount,
-                "category": category,
-                "recommendation": None,
-                "ranked": [],
-                "disqualified": disqualified,
-            }
-        )
-        return payload
-
     return {
         "merchant": request.merchant,
         "amount": request.amount,
         "category": category,
-        "recommendation": ranked[0],
+        "recommendation": ranked[0] if ranked else None,
         "runner_up": ranked[1] if len(ranked) > 1 else None,
         "ranked": ranked,
         "disqualified": disqualified,
