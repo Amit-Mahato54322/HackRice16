@@ -93,47 +93,47 @@ For each eligible (credit, mapped) card the user owns:
 - **No eligible cards at all** (nothing mapped yet) → dashboard/voice response should say so plainly and prompt the user to map a card, not fail silently.
 - **Nessie merchant match found** → use Nessie's merchant category to validate or override Gemini's category guess before scoring.
 
-## 7. Milestones
+## 8. Milestones
+
+Backend and frontend are meant to run as parallel workstreams, not a relay race. The trick is M1: every endpoint's response shape is written down as a literal `backend/mock/*.json` fixture and committed before any real backend logic exists. Frontend builds every screen against those fixtures starting in M1 and never has to wait on backend again — later milestones just swap a screen's mock data source for the real URL once backend ships it, which is a one-line change, not new UI work. Backend-only milestones (M5) have no frontend task at all, so there's nothing to block there either.
 
 ### Day 1 — core pipeline, no voice yet
 
-**M1 — Scaffold**
-- Backend: FastAPI app skeleton, SQLAlchemy models (`users`, `linked_accounts`, `card_products`), Postgres schema, all route files registered with stub handlers
-- Frontend: Expo project init, Expo Router layout, Login / Dashboard / Voice / Why screens stubbed (navigate between them, no logic)
+**M1 — Contract freeze + scaffold** (~2–3h)
+- Backend (~90 min): FastAPI app skeleton; SQLAlchemy models (`users`, `linked_accounts`, `card_products`); Postgres schema; every route file registered with a stub handler; the response JSON for `/auth/login`, `/dashboard`, `/cards/search`, `/cards/map`, and `/recommend` written as literal `backend/mock/*.json` fixtures and committed *before* any real logic; permissive CORS enabled immediately. Done when `/docs` renders every route and each stub returns its fixture's exact shape.
+- Frontend (~90 min, fully parallel — zero backend dependency): Expo project init, Expo Router layout, Login / Dashboard / Voice / Why screens stubbed and wired to the mock fixtures, not a live server. Done when a user can tap through all four screens end-to-end on fake data with no backend running at all.
 
-**M2 — Auth**
-- Backend: `POST /auth/login` — verify seeded demo user, return JWT; seed script for demo user
-- Frontend: Login screen form → calls `/auth/login`, stores JWT, redirects to Dashboard
+**M2 — Auth** (~1h)
+- Backend (~45 min): `POST /auth/login` — verify the seeded demo user, return a real JWT; seed script creates that user. Done when a curl with the seeded credentials returns a JWT matching the M1 fixture shape.
+- Frontend (~15 min, can happen any time after M1, independent of backend's pace): swap the Login screen's mock call for the real `/auth/login` URL; store the JWT; redirect to Dashboard. Shape hasn't changed since M1, so this is a base-URL swap, not new UI.
 
-**M3 — Nessie account sync**
-- Backend: `POST /nessie/sync` — fetch demo customer's credit accounts from Nessie, upsert into `linked_accounts` (balance + credit_limit); `GET /dashboard` returns account list
-- Frontend: Dashboard screen calls `/dashboard` on load, renders card rows with balance + utilization %; "not configured" badge for unmapped cards
+**M3 — Nessie account sync** (~1.5h)
+- Backend (~75 min): Nessie client wrapper (list customer accounts, get account detail); `POST /nessie/sync` upserts into `linked_accounts`; `GET /dashboard` returns the real account list matching the M1 fixture shape. Done when sync runs against the real Nessie sandbox and `/dashboard` reflects real balances.
+- Frontend (~15 min): swap Dashboard's mock data source for `GET /dashboard`. Already renders correctly since M1 — this is a data-source swap, not new UI.
 
-**M4 — VectorMint card mapping**
-- Backend: `GET /cards/search?q=` — proxy VectorMint catalog search; `POST /cards/map` — link a `linked_account` to a `card_product`, cache reward JSON
-- Frontend: Card-mapping picker UI on Dashboard — search field + results list + confirm tap updates the card row
+**M4 — VectorMint card mapping** (~1.5h)
+- Backend (~75 min): VectorMint client wrapper (search, fetch reward data); `GET /cards/search?q=` proxies the catalog; `POST /cards/map` links a `linked_account` to a `card_product` and caches the reward JSON. Done when mapping a seeded account to a real card persists a `card_product` row and `/dashboard` shows it as "configured."
+- Frontend (~15 min): swap the card-mapping picker's mock search results for `GET /cards/search`; wire the confirm button to `POST /cards/map`. The picker UI itself was already built and tested against mocks in M1 — this is wiring, not new UI.
 
-**M5 — Scoring engine**
-- Backend: pure function `score_cards(cards, category, amount)` — reward_rate × amount, projected utilization, utilization_flag; unit-tested with hardcoded inputs
-- Frontend: none
+**M5 — Scoring engine** (~1h, backend-only — no frontend task, nothing to block)
+- Backend: pure function `score_cards(cards, category, amount)` — reward_rate × amount, projected utilization, utilization_flag; unit-tested standalone with hardcoded inputs, no HTTP, no DB. Done when 3–4 hand-written cases (clear winner, tie, utilization-flagged card, unmapped card excluded) all pass.
 
 ### Day 2 — voice layer + polish
 
-**M6 — Voice capture + extraction**
-- Backend: `POST /recommend` accepts multipart audio; calls Gemini → `{merchant, amount, category}`; cross-references Nessie merchant catalog for category validation; returns extraction result (no scoring yet)
-- Frontend: Voice screen — record button with `expo-av`, upload audio to `/recommend`, display extracted merchant/category/amount
+**M6 — Voice capture + extraction** (~1.5h)
+- Backend (~75 min): `POST /recommend` accepts multipart audio; calls Gemini → `{merchant, amount, category}`; cross-references the Nessie merchant catalog for category validation; returns the extraction result only (no scoring yet), extending — not replacing — the M1 contract. Done when three real recorded test phrases each extract correctly.
+- Frontend (~15 min; the recording UI itself can be built with `expo-av` immediately after M1 against a hardcoded fixture, so only the final network call is blocked on backend): record button; upload to `/recommend`; display extracted merchant/category/amount.
 
-**M7 — Full recommend pipeline**
-- Backend: wire M5 scoring engine into `/recommend` — runs after extraction, returns ranked card list + recommendation text
-- Frontend: Voice screen displays top card recommendation after upload; "Why?" button navigates to Why screen with ranked list
+**M7 — Full recommend pipeline** (~45 min)
+- Backend: wire M5's scoring engine into `/recommend` — runs after extraction, returns the ranked card list + recommendation text. Done when a live voice clip produces a ranked list matching the M1 "Why" screen contract.
+- Frontend: none new — Voice/Why screens are already built against the contract; this just makes the data real.
 
-**M8 — ElevenLabs TTS**
-- Backend: `/recommend` calls ElevenLabs with recommendation text, returns audio bytes alongside JSON
-- Frontend: Voice screen plays returned audio automatically via `expo-av`
+**M8 — ElevenLabs TTS** (~45 min)
+- Backend: `/recommend` calls ElevenLabs with the recommendation text, returns audio bytes alongside the JSON. Done when the returned audio plays back correctly and matches the spoken `why` string.
+- Frontend (~15 min, buildable in parallel against any static test MP3 well before backend ships real audio): Voice screen plays the returned audio automatically via `expo-av`.
 
-**M9 — Polish**
-- Backend: none
-- Frontend: Dashboard utilization bars, highlight winning card, Why screen ranked breakdown with value + utilization flag, Nessie transaction history on card detail
+**M9 — Polish** (~1.5h, frontend-only — no backend dependency)
+- Frontend: Dashboard utilization bars, highlight winning card, Why screen ranked breakdown with value + utilization flag, Nessie transaction history on card detail.
 
 **M10 — Stretch: spending trends**
 - Backend: `GET /dashboard/trends` — aggregate Nessie purchase history by category per card
@@ -144,5 +144,5 @@ For each eligible (credit, mapped) card the user owns:
 - Devpost write-up + required demo video
 
 ## 9. Open items to confirm once you're in VectorMint's docs/playground
-- Exact convention their reward-rate fields use (flat %, points-per-dollar, or something else) so `estimated_value` is computed correctly — adjust the formula in §6 once confirmed.
+- Exact convention their reward-rate fields use (flat %, points-per-dollar, or something else) so `estimated_value` is computed correctly — adjust the formula in §7 once confirmed.
 - Whether their 250-card catalog includes your specific 5 real cards, or if any need to be entered as a manual fallback (their docs mention provenance/change-history tracking, so coverage is likely good, but worth a quick check on your actual 5 before Day 1 is over).
