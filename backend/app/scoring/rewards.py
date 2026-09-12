@@ -1,18 +1,16 @@
-"""Card reward data: catalog, VectorMint normalization, and the cap overlay.
+"""Card reward data: the local catalog and VectorMint normalization.
 
-Two things the engine needs that no single source provides cleanly:
+VectorMint owns reward rates, cached on `CardProduct.cached_reward_json` at
+mapping time. Its exact field shape is an open item (docs/PLAN.md §9), so the
+normalizer accepts the plausible shapes and isolates the one genuinely
+ambiguous decision -- percent vs. points-per-dollar -- in a single documented
+constant.
 
-1. **Rates.** VectorMint owns these, cached on `CardProduct.cached_reward_json`
-   at mapping time. Its exact field shape is an open item (docs/PLAN.md §9), so
-   the normalizer below accepts the plausible shapes and isolates the one
-   genuinely ambiguous decision -- percent vs. points-per-dollar -- in a single
-   documented constant.
-
-2. **Caps.** VectorMint very likely does not publish category caps at all, and
-   caps are what make headroom scarce. Without them the shadow-pricing term is
-   inert. So caps and shared cap groups are hand-maintained here in
-   `card_db.json` for the demo cards, keyed by card id. This is a real
-   limitation and belongs in the honest-limitations list, not hidden.
+`card_db.json` is a local fallback catalog for the demo cards, used when no
+VectorMint payload has been cached yet. It carries only fields VectorMint also
+publishes: rates, base rate, point value, annual fee. Category caps, sign-up
+bonuses, and purchase-protection terms are deliberately absent -- no source
+publishes them, so the engine does not score on them.
 """
 
 import json
@@ -23,7 +21,7 @@ _DB_PATH = Path(__file__).resolve().parent / "card_db.json"
 # VectorMint's rate convention. "percent" means 0.06 == 6% cash back.
 # "points_per_dollar" means 6 == 6x points, worth 6 * point_value cents.
 # Confirm in their playground and flip this one constant if needed
-# (docs/PLAN.md §9). Getting it wrong is a 100x error, so it is asserted
+# (docs/PLAN.md §9). Getting it wrong is a 100x error, so it is checked
 # against a sanity bound below rather than trusted silently.
 RATE_CONVENTION = "percent"
 
@@ -36,7 +34,7 @@ DEFAULT_POINT_VALUE = 1.0
 
 
 def load_catalog(path=_DB_PATH):
-    """The local card catalog: rates, caps, cap groups, subs, protections."""
+    """The local fallback catalog: names, rates, base rates, point values."""
     with open(path) as f:
         return json.load(f)
 
@@ -90,8 +88,10 @@ def normalize_reward_json(cached, fallback=None):
         return fallback
 
     base = cached.get("base_rate") or cached.get("default_rate")
-    base_rate = _as_rate(base) if base is not None else fallback.get(
-        "base_rate", DEFAULT_BASE_RATE
+    base_rate = (
+        _as_rate(base)
+        if base is not None
+        else fallback.get("base_rate", DEFAULT_BASE_RATE)
     )
 
     point_value = cached.get("point_value")
@@ -107,10 +107,4 @@ def normalize_reward_json(cached, fallback=None):
         "point_value": point_value,
         "base_rate": base_rate,
         "rates": rates,
-        # Caps and protections come from the local overlay -- VectorMint does
-        # not publish them. See the module docstring.
-        "caps": fallback.get("caps", {}),
-        "cap_groups": fallback.get("cap_groups", {}),
-        "sub": fallback.get("sub"),
-        "protection": fallback.get("protection", {}),
     }

@@ -4,56 +4,34 @@
     "annual_fee": 95,
     "point_value": 1.0,
     "base_rate": 0.01,
-    "rates": { "groceries": 0.06, "gas": 0.03, "streaming": 0.06 },
-    "caps": { "groceries": 6000 },
-    "cap_groups": {},
-    "sub": null,
-    "protection": { "warranty_years": 1, "purchase_protection": true, "price_protection": false }
+    "rates": { "groceries": 0.06, "gas": 0.03, "streaming": 0.06 }
   },
   "citi_dc": {
     "name": "Citi Double Cash",
     "annual_fee": 0,
     "point_value": 1.0,
     "base_rate": 0.02,
-    "rates": {},
-    "caps": {},
-    "cap_groups": {},
-    "sub": null,
-    "protection": { "warranty_years": 0, "purchase_protection": false, "price_protection": false }
+    "rates": {}
   },
   "freedom_flex": {
     "name": "Chase Freedom Flex",
     "annual_fee": 0,
     "point_value": 1.0,
     "base_rate": 0.01,
-    "rates": { "groceries": 0.05, "dining": 0.05, "drugstores": 0.05 },
-    "caps": {},
-    "cap_groups": {
-      "rotating": { "cap": 1500, "categories": ["groceries", "dining", "drugstores"] }
-    },
-    "sub": null,
-    "protection": { "warranty_years": 1, "purchase_protection": true, "price_protection": false }
+    "rates": { "groceries": 0.05, "dining": 0.05, "drugstores": 0.05 }
   },
   "chase_sapphire_reserve": {
     "name": "Chase Sapphire Reserve",
     "annual_fee": 550,
     "point_value": 1.5,
     "base_rate": 0.01,
-    "rates": { "travel": 0.03, "dining": 0.03 },
-    "caps": {},
-    "cap_groups": {},
-    "sub": null,
-    "protection": { "warranty_years": 2, "purchase_protection": true, "price_protection": false }
+    "rates": { "travel": 0.03, "dining": 0.03 }
   },
   "venture_x": {
     "name": "Capital One Venture X",
     "annual_fee": 395,
     "point_value": 1.0,
     "base_rate": 0.02,
-    "rates": { "travel": 0.05 },
-    "caps": {},
-    "cap_groups": {},
-    "sub": { "value": 750, "min_spend": 4000, "window_days": 90 },
-    "protection": { "warranty_years": 1, "purchase_protection": true, "price_protection": false }
+    "rates": { "travel": 0.05 }
   }
 }
