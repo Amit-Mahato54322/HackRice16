@@ -146,9 +146,10 @@ def test_mortgage_mode():
 
 
 class FakeProduct:
-    def __init__(self, vectormint_card_id, display_name):
+    def __init__(self, vectormint_card_id, display_name, cached_reward_json=None):
         self.vectormint_card_id = vectormint_card_id
         self.display_name = display_name
+        self.cached_reward_json = cached_reward_json
 
 
 class FakeAccount:
@@ -189,6 +190,56 @@ def test_unknown_card_product_is_skipped():
     cards, state, skipped = adapter.build_wallet(accounts)
     assert cards == {}
     assert skipped[0]["reason"] == "no reward data for this card product"
+
+
+def test_vectormint_points_per_dollar():
+    """{"rate": 3, "unit": "points_per_dollar"} is 3x, not 300%."""
+    fallback = rewards.load_catalog()["chase_sapphire_reserve"]
+    card = rewards.normalize_reward_json(
+        {
+            "reward_rules": [
+                {"category_id": "dining", "rate": 3, "unit": "points_per_dollar"},
+                {"category_id": "other", "rate": 1, "unit": "points_per_dollar"},
+            ]
+        },
+        fallback,
+    )
+    assert card["rates"]["dining"] == 0.03, card["rates"]
+    assert card["base_rate"] == 0.01, card
+    # point_value is not VectorMint's to publish -- it stays local.
+    assert card["point_value"] == 1.5
+    # 3x at 1.5 cents a point is 4.5%.
+    assert abs(engine.effective_rate(card, "dining") - 0.045) < 1e-9
+
+
+def test_vectormint_percent_unit():
+    """A percent-unit rule normalizes the same way."""
+    fallback = rewards.load_catalog()["amex_bcp"]
+    card = rewards.normalize_reward_json(
+        {"reward_rules": [{"category_id": "groceries", "rate": 6, "unit": "percent"}]},
+        fallback,
+    )
+    assert card["rates"]["groceries"] == 0.06, card["rates"]
+
+
+def test_vectormint_implausible_rate_is_dropped():
+    """A rule that normalizes above 30% means the payload was misread."""
+    fallback = rewards.load_catalog()["citi_dc"]
+    card = rewards.normalize_reward_json(
+        {"reward_rules": [{"category_id": "dining", "rate": 4000, "unit": "percent"}]},
+        fallback,
+    )
+    # Nothing usable survived, so the local catalog stands.
+    assert card == fallback
+
+
+def test_uncached_product_falls_back_to_catalog():
+    """A mapped card with no VectorMint payload still scores."""
+    catalog = rewards.load_catalog()
+    product = FakeProduct("amex_bcp", "Amex Blue Cash Preferred")
+    cards, state, skipped = adapter.build_wallet([FakeAccount(1, 5000.0, product)])
+    assert skipped == []
+    assert cards["1"]["rates"]["groceries"] == catalog["amex_bcp"]["rates"]["groceries"]
 
 
 def test_catalog_supplies_rates():
