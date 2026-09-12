@@ -6,20 +6,29 @@ by app/scoring/engine.py before Gemini was called, and a reply containing a
 figure the engine did not produce is discarded (see services/gemini.py).
 
 So the worst case is a plainer sentence, never a wrong one.
+
+The reply is also spoken: ElevenLabs turns it into audio the same way
+/recommend does (see app/routers/recommend.py), returning
+`{ transcript, audio: { url, mimeType } }`. Falls back to placeholder audio
+if ELEVENLABS_API_KEY isn't set or the call fails.
 """
 
 import logging
 import re
+import uuid
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import ELEVENLABS_API_KEY
 from app.db import get_db
 from app.models.linked_account import LinkedAccount
 from app.scoring import adapter, engine, limits
 from app.scoring.categorize import categorize
 from app.services import gemini
+from app.services.elevenlabs import synthesize_speech
+from app.static_files import save_audio
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +37,21 @@ router = APIRouter(tags=["conversation"])
 DEMO_USER_ID = 1  # replaced by JWT auth in M2 (deferred, see docs/PLAN.md)
 
 MAX_AMOUNT = 2500.0
+
+FALLBACK_AUDIO = {"url": "/mock/recommend-audio-placeholder.mp3", "mimeType": "audio/mpeg"}
+
+
+def _build_voice(transcript: str) -> dict:
+    if not ELEVENLABS_API_KEY:
+        return {"transcript": transcript, "audio": FALLBACK_AUDIO}
+
+    try:
+        audio_bytes = synthesize_speech(transcript)
+        url = save_audio(f"{uuid.uuid4()}.mp3", audio_bytes)
+        return {"transcript": transcript, "audio": {"url": url, "mimeType": "audio/mpeg"}}
+    except Exception:
+        logger.exception("ElevenLabs synthesis failed, falling back to placeholder audio")
+        return {"transcript": transcript, "audio": FALLBACK_AUDIO}
 
 
 class PurchaseIn(BaseModel):
@@ -246,4 +270,5 @@ def conversation(request: ConversationRequest, db: Session = Depends(get_db)):
         # True when the wording came from Gemini and passed the grounding
         # check; false when this is the engine's own sentence.
         "generated": grounded,
+        "voice": _build_voice(reply),
     }

@@ -32,7 +32,10 @@ from app.config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# gemini-2.5-flash was retired ("no longer available to new users" as of
+# 2026-09-12, verified via a direct API call) — gemini-3.6-flash is its
+# replacement, confirmed working against this exact schema/request shape.
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 TIMEOUT_SECONDS = 25.0
 
