@@ -20,6 +20,7 @@ Three things keep it honest:
 The API key stays here on the backend; the mobile app never sees it.
 """
 
+import base64
 import json
 import logging
 import os
@@ -155,6 +156,87 @@ def validate_reply(reply: str, context: dict) -> str | None:
     for figure in _figures(reply):
         if figure not in allowed:
             return figure
+    return None
+
+
+# --- voice input --------------------------------------------------------
+
+
+def transcribe(audio_bytes: bytes, mime_type: str) -> str | None:
+    """Speech-to-text only. The transcript is then handed to translate()
+    exactly like a typed message, so it goes through the same grounding
+    pipeline -- no separate audio-specific extraction path to keep honest.
+
+    None on any failure; the caller should ask the user to type instead
+    rather than guess at what was said.
+    """
+    if not GEMINI_API_KEY:
+        return None
+
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": mime_type,
+                            "data": base64.b64encode(audio_bytes).decode(),
+                        }
+                    },
+                    {
+                        "text": "Transcribe exactly what is said. Reply with "
+                        "only the transcript, nothing else -- no quotes, no "
+                        "commentary."
+                    },
+                ],
+            }
+        ],
+        "generationConfig": {"temperature": 0.0},
+    }
+
+    # Same transient-failure tolerance as translate() -- the free tier 503s
+    # under load and 429s at the rate limit, and a recording the user just
+    # made deserves the same retry budget as a typed message would get.
+    last_error: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            response = httpx.post(
+                f"{BASE_URL}/{MODEL}:generateContent",
+                params={"key": GEMINI_API_KEY},
+                json=payload,
+                timeout=TIMEOUT_SECONDS,
+            )
+            if response.status_code in RETRY_STATUSES:
+                raise httpx.HTTPStatusError(
+                    f"retryable {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
+            response.raise_for_status()
+            body = response.json()
+            text = body["candidates"][0]["content"]["parts"][0]["text"].strip()
+            # The model occasionally prefixes a bare meta-label ("thought",
+            # "transcript:") despite the instruction not to -- seen
+            # intermittently at temperature 0. Strip a first line that's only
+            # that kind of label, never real speech.
+            first_line, _, rest = text.partition("\n")
+            if rest and re.fullmatch(r"(thought|transcript)s?:?", first_line.strip(), re.IGNORECASE):
+                text = rest.strip()
+            return text or None
+        except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
+            last_error = exc
+            if attempt + 1 < MAX_ATTEMPTS:
+                time.sleep(BACKOFF_SECONDS * (attempt + 1))
+        except Exception as exc:  # malformed body, bad key, anything else
+            last_error = exc
+            break
+
+    logger.warning(
+        "Gemini transcription unavailable after %d attempt(s) (%s)",
+        MAX_ATTEMPTS,
+        type(last_error).__name__,
+    )
     return None
 
 

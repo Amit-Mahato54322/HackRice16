@@ -11,13 +11,18 @@ The reply is also spoken: ElevenLabs turns it into audio the same way
 /recommend does (see app/routers/recommend.py), returning
 `{ transcript, audio: { url, mimeType } }`. Falls back to placeholder audio
 if ELEVENLABS_API_KEY isn't set or the call fails.
+
+/conversation/voice accepts a recorded clip instead of typed text: Gemini
+transcribes it (services/gemini.transcribe), and the transcript is handed to
+the exact same reply pipeline as typed text -- no separate audio-specific
+extraction path to keep the honesty guarantee above in one place.
 """
 
 import logging
 import re
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
@@ -229,26 +234,29 @@ def _patched(purchase: PurchaseIn, patch: dict) -> PurchaseIn:
     )
 
 
-@router.post("/conversation")
-def conversation(request: ConversationRequest, db: Session = Depends(get_db)):
-    context = _context(db, request.purchase)
+def _reply(db: Session, message: str, purchase: PurchaseIn, history: list[dict]) -> dict:
+    """Shared by /conversation (typed) and /conversation/voice (spoken)."""
+    context = _context(db, purchase)
 
-    translated = gemini.translate(
-        request.message,
-        context,
-        [turn.model_dump() for turn in request.history],
-    )
+    translated = gemini.translate(message, context, history)
     patch = _patch(translated.get("purchase_patch") if translated else None)
     # Gemini is the better extractor, but it is not always reachable.
     if patch is None:
-        patch = _local_patch(request.message)
+        patch = _local_patch(message)
 
     # If they changed what they are buying, the answer is about the new
     # purchase -- so re-rank before judging the reply. Otherwise a perfectly
     # good sentence about $600 gets rejected for quoting a figure that only
     # looks ungrounded because the context was still describing $90.
     if patch:
-        context = _context(db, _patched(request.purchase, patch))
+        context = _context(db, _patched(purchase, patch))
+        # `translated["reply"]` was phrased against the *old* context (e.g.
+        # "no cards yet" from a blank starting purchase) -- it has no figures
+        # for validate_reply() to catch, so a stale-but-figure-free sentence
+        # would otherwise sail through ungrounded-but-undetected. Re-translate
+        # against what actually changed rather than ship a true-at-the-time,
+        # false-by-now sentence.
+        translated = gemini.translate(message, context, history)
 
     computed = _computed_sentence(context)
     reply = computed
@@ -272,3 +280,37 @@ def conversation(request: ConversationRequest, db: Session = Depends(get_db)):
         "generated": grounded,
         "voice": _build_voice(reply),
     }
+
+
+@router.post("/conversation")
+def conversation(request: ConversationRequest, db: Session = Depends(get_db)):
+    history = [turn.model_dump() for turn in request.history]
+    return _reply(db, request.message, request.purchase, history)
+
+
+@router.post("/conversation/voice")
+async def conversation_voice(
+    db: Session = Depends(get_db),
+    audio: UploadFile = File(...),
+    store: str = Form(""),
+    amount: float = Form(0.0),
+    category: str | None = Form(None),
+):
+    """Single-shot voice input -- no history, no follow-up questions, per
+    CLAUDE.md's non-goals. The transcript is treated exactly like a typed
+    message once Gemini produces it.
+    """
+    audio_bytes = await audio.read()
+    mime_type = audio.content_type or "audio/mp4"
+
+    message = gemini.transcribe(audio_bytes, mime_type)
+    if not message:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not transcribe the audio. Please try again or type instead.",
+        )
+
+    purchase = PurchaseIn(store=store, amount=amount, category=category)
+    result = _reply(db, message, purchase, [])
+    result["transcript"] = message  # what the user said, for the UI's own chat bubble
+    return result

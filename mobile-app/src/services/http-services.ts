@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { money } from "../domain/models.ts";
 import type { Category, Purchase } from "../domain/models";
 import type {
@@ -54,14 +55,38 @@ async function request<T>(
   signal.addEventListener("abort", abort, { once: true });
 
   try {
+    // FormData (voice upload) must not get a manual Content-Type -- fetch
+    // sets its own multipart boundary, which a fixed header would break.
+    const isFormData = init?.body instanceof FormData;
     const response = await fetch(`${BASE_URL}${path}`, {
       ...init,
       signal: timeout.signal,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: isFormData
+        ? init?.headers
+        : { "Content-Type": "application/json", ...init?.headers },
     });
     if (!response.ok) {
+      // A raised HTTPException gives {"detail": "..."}; FastAPI's own request
+      // validation (missing/malformed field) gives {"detail": [{loc, msg}]}
+      // instead -- surface either rather than a bare status code, which told
+      // us nothing about what actually failed.
+      const reason = await response
+        .json()
+        .then((body) => {
+          if (typeof body?.detail === "string") return body.detail;
+          if (Array.isArray(body?.detail)) {
+            return body.detail
+              .map((e: { loc?: unknown[]; msg?: string }) =>
+                e.msg ? `${e.loc?.join(".") ?? "field"}: ${e.msg}` : null,
+              )
+              .filter(Boolean)
+              .join("; ");
+          }
+          return undefined;
+        })
+        .catch(() => undefined);
       throw new Error(
-        `${init?.method ?? "GET"} ${path} failed: ${response.status}`,
+        reason || `${init?.method ?? "GET"} ${path} failed: ${response.status}`,
       );
     }
     return (await response.json()) as T;
@@ -113,6 +138,8 @@ type ConversationResponse = {
   reply: string;
   purchasePatch?: { store?: string; amount?: number } | null;
   voice?: { transcript: string; audio?: { url: string; mimeType: string } };
+  // Only /conversation/voice sets this: what Gemini heard the user say.
+  transcript?: string;
 };
 
 // --- mapping ----------------------------------------------------------------
@@ -338,6 +365,45 @@ export function createHttpServices(
           reply: body.reply,
           purchasePatch: body.purchasePatch ?? undefined,
           voice: body.voice ? toAbsoluteVoice(body.voice) : undefined,
+        };
+      },
+
+      // Single-shot: no history sent, matching the backend's non-goal of
+      // multi-turn voice dialogue. The current purchase still travels along
+      // as form fields so an earlier typed/edited amount or store isn't lost.
+      async sendVoice(fileUri, mimeType, purchase, signal) {
+        const form = new FormData();
+        if (Platform.OS === "web") {
+          // On web the recorder hands back a blob: URL, and the browser's
+          // real FormData needs an actual Blob -- the {uri, type, name}
+          // object below is a React Native-only convention that a browser
+          // silently stringifies into garbage instead of a file part.
+          const blob = await fetch(fileUri).then((r) => r.blob());
+          const type = blob.type || mimeType;
+          form.append("audio", blob, `clip.${type.split("/")[1] ?? "webm"}`);
+        } else {
+          // React Native's fetch accepts this {uri, type, name} shape in
+          // place of a real Blob -- it streams the file at `uri` directly.
+          form.append("audio", {
+            uri: fileUri,
+            type: mimeType,
+            name: `clip.${mimeType.split("/")[1] ?? "m4a"}`,
+          } as unknown as Blob);
+        }
+        form.append("store", purchase.store);
+        form.append("amount", String(purchase.amount));
+        form.append("category", TO_ENGINE[purchase.category]);
+
+        const body = await request<ConversationResponse>(
+          "/conversation/voice",
+          signal,
+          { method: "POST", body: form },
+        );
+        return {
+          reply: body.reply,
+          purchasePatch: body.purchasePatch ?? undefined,
+          voice: body.voice ? toAbsoluteVoice(body.voice) : undefined,
+          transcript: body.transcript,
         };
       },
     },
