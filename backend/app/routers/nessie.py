@@ -1,12 +1,16 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app import timeseries
 from app.config import NESSIE_CUSTOMER_ID
 from app.db import get_db
 from app.models.linked_account import LinkedAccount
 from app.services import nessie as nessie_svc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/nessie", tags=["nessie"])
 
@@ -50,6 +54,21 @@ def sync_accounts(db: Session = Depends(get_db)):
         synced.append({"nessie_account_id": nessie_id, "balance": balance})
 
     db.commit()
+
+    # Record where each card stood at this moment. Utilization is a snapshot
+    # the issuer reports and then overwrites -- neither Nessie nor the issuer
+    # can say later what it was, so the history exists only if we write it
+    # down here. Never let this fail a sync: the balances are already saved.
+    for row in db.query(LinkedAccount).filter_by(user_id=DEMO_USER_ID).all():
+        try:
+            timeseries.record_utilization(
+                account_id=row.id,
+                balance=row.current_balance or 0.0,
+                credit_limit=row.credit_limit,
+            )
+        except Exception as exc:  # noqa: BLE001 - telemetry must not break sync
+            logger.warning("utilization snapshot failed for account %s: %s", row.id, exc)
+
     return {"synced": len(synced), "accounts": synced}
 
 

@@ -9,14 +9,19 @@ Gemini audio extraction (M6) and ElevenLabs audio (M8) still land later; this
 route currently takes merchant and amount as JSON.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
+from app import timeseries
 from app.db import get_db
 from app.models.linked_account import LinkedAccount
 from app.scoring import adapter, engine, limits
 from app.scoring.categorize import categorize
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["recommend"])
 
@@ -95,11 +100,30 @@ def recommend(request: RecommendRequest, db: Session = Depends(get_db)):
         for d in result["disqualified"]
     ]
 
+    # Log what was answered and the inputs behind it, so a recommendation
+    # someone questions later can be reconstructed exactly. Never let this
+    # fail the request -- the user still needs their answer.
+    chosen = ranked[0] if ranked else None
+    try:
+        timeseries.record_recommendation(
+            user_id=DEMO_USER_ID,
+            merchant=request.merchant,
+            category=category,
+            amount=request.amount,
+            chosen_account_id=chosen["linked_account_id"] if chosen else None,
+            reward_rate=chosen["reward_rate"] if chosen else None,
+            score=chosen["score"] if chosen else None,
+            utilization=chosen["projected_utilization"] if chosen else None,
+            ceiling=request.max_utilization,
+        )
+    except Exception as exc:  # noqa: BLE001 - telemetry must not break the route
+        logger.warning("recommendation not logged: %s", exc)
+
     return {
         "merchant": request.merchant,
         "amount": request.amount,
         "category": category,
-        "recommendation": ranked[0] if ranked else None,
+        "recommendation": chosen,
         "runner_up": ranked[1] if len(ranked) > 1 else None,
         "ranked": ranked,
         "disqualified": disqualified,
