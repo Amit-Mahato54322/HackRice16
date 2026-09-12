@@ -6,7 +6,7 @@ how a figure was produced, we trace it line by line.
 
 Each card is scored in dollars:
 
-    score = reward + float - risk
+    score = reward - risk
 
 Scope note: Nessie is the only external API in the stack, supplying balances,
 purchase history and merchant categories. Reward rates come from a small local
@@ -15,19 +15,16 @@ bonuses and purchase-protection terms are deliberately absent: modelling them
 would mean inventing cap-usage and claim figures no source publishes, so the
 output would be driven by our assumptions rather than by data.
 
+Statement timing is absent for the same reason: Nessie exposes no statement
+close date or billing cycle, so the float term and the "pay it down before it
+reports" discount both ran on dates we made up.
+
 The tradeoff is that `reward` is a straight rate lookup. The modelling that
 remains is `risk_term`, which prices utilization damage in dollars instead of
 flagging it -- which is still a trade no rewards app makes.
 """
 
-from datetime import date
-
 # --- tunable coefficients (no magic numbers inline) -------------------------
-
-# Float: carrying the balance interest-free until it is actually due.
-GRACE_DAYS = 21
-FLOAT_APR = 0.05
-DAYS_PER_YEAR = 365.0
 
 # FICO damage from utilization is not linear; it steps at thresholds.
 #
@@ -42,11 +39,6 @@ PER_CARD_FICO_STEPS = [(0.289, 0), (0.489, 8), (0.689, 15), (0.889, 25)]
 # the larger of the two effects, so the magnitudes live here rather than in a
 # separate weighting constant.
 AGGREGATE_FICO_STEPS = [(0.089, 0), (0.289, 10), (0.489, 25), (0.689, 45), (0.889, 70)]
-
-# Utilization reports at statement close, not payment date. A card that closes
-# well in the future can be paid down before it ever reports.
-STATEMENT_FAR_DAYS = 20
-STATEMENT_FAR_DISCOUNT = 0.3
 
 # The same utilization damage costs a high scorer far more points than a low
 # one: maxing out cards runs ~110-130 points off a ~790 profile but only ~30-50
@@ -95,23 +87,6 @@ def reward_term(card, amount, category):
     }
 
 
-def days_to_statement_close(card_state, today=None):
-    """Days until this card's balance reports to the bureaus."""
-    close = card_state.get("statement_close")
-    if not close:
-        return 0
-    today = today or date.today()
-    if isinstance(close, str):
-        close = date.fromisoformat(close)
-    return max(0, (close - today).days)
-
-
-def float_term(card_state, amount, today=None):
-    """Value of holding the money until the bill is actually due."""
-    days_free = days_to_statement_close(card_state, today) + GRACE_DAYS
-    return amount * FLOAT_APR * days_free / DAYS_PER_YEAR
-
-
 def fico_cost(util, steps=None):
     """FICO points lost at this utilization. A step function, not a curve.
 
@@ -156,7 +131,7 @@ def aggregate_utilization(state, exclude_id=None, extra=0.0):
     return (balance / limit) if limit > 0 else 0.0
 
 
-def risk_term(card_state, amount, state, today=None, card_id=None):
+def risk_term(card_state, amount, state, card_id=None):
     """Dollar-denominated cost of the FICO damage this purchase would do.
 
     The differentiator: utilization is priced, not merely flagged, so the
@@ -179,13 +154,7 @@ def risk_term(card_state, amount, state, today=None, card_id=None):
     )
 
     sensitivity = score_sensitivity(state.get("baseline_score", DEFAULT_BASELINE_SCORE))
-    penalty = (per_card + aggregate) * per_point * sensitivity
-
-    if days_to_statement_close(card_state, today) > STATEMENT_FAR_DAYS:
-        # Plenty of time to pay it down before it ever reports.
-        penalty *= STATEMENT_FAR_DISCOUNT
-
-    return penalty
+    return (per_card + aggregate) * per_point * sensitivity
 
 
 # --- disqualifiers ---------------------------------------------------------
@@ -235,14 +204,13 @@ def build_why(detail, category):
 # --- scoring ---------------------------------------------------------------
 
 
-def score_card(card_id, card, card_state, amount, category, state, today=None):
+def score_card(card_id, card, card_state, amount, category, state):
     """Score one card in dollars, with every term broken out."""
     detail = reward_term(card, amount, category)
-    float_value = float_term(card_state, amount, today)
-    risk = risk_term(card_state, amount, state, today, card_id)
+    risk = risk_term(card_state, amount, state, card_id)
 
-    detail.update({"float": float_value, "risk": risk})
-    score = detail["reward"] + float_value - risk
+    detail["risk"] = risk
+    score = detail["reward"] - risk
 
     return {
         "card": card_id,
@@ -252,7 +220,6 @@ def score_card(card_id, card, card_state, amount, category, state, today=None):
         "estimated_value": detail["reward"],
         "breakdown": {
             "reward": detail["reward"],
-            "float": float_value,
             "risk": -risk,
         },
         "why": build_why(detail, category),
@@ -260,7 +227,7 @@ def score_card(card_id, card, card_state, amount, category, state, today=None):
     }
 
 
-def rank(state, category, amount, cards, today=None):
+def rank(state, category, amount, cards):
     """Rank every card in the wallet for this purchase, best first.
 
     Returns eligible cards sorted by score, plus the disqualified ones with
@@ -279,9 +246,7 @@ def rank(state, category, amount, cards, today=None):
                 {"card": card_id, "card_name": card["name"], "reason": reason}
             )
             continue
-        scored.append(
-            score_card(card_id, card, card_state, amount, category, state, today)
-        )
+        scored.append(score_card(card_id, card, card_state, amount, category, state))
 
     scored.sort(key=lambda r: r["score"], reverse=True)
     return {

@@ -7,7 +7,6 @@ These cases are the demo. They must stay green while coefficients get tuned.
 
 import os
 import sys
-from datetime import date, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -88,7 +87,7 @@ def test_risk_penalty_is_priced_not_flagged():
     result = engine.rank(state, "groceries", 400.0, cards)
     flex = find(result, "freedom_flex")
     assert flex["breakdown"]["risk"] < 0, flex["breakdown"]
-    # 15 - 8 = 7 points at the default $2/point, no statement discount.
+    # 15 - 8 = 7 points at the default $2/point.
     assert abs(flex["breakdown"]["risk"] + 14.0) < 1e-9, flex["breakdown"]
 
 
@@ -143,26 +142,6 @@ def test_mortgage_mode():
     )
 
 
-def test_statement_timing_discounts_risk():
-    """A card closing well in the future can be paid down before it reports."""
-    cards, state = wallet()
-    # Freedom Flex closes in 9 days, so its penalty lands in full.
-    soon_risk = find(engine.rank(state, "groceries", 400.0, cards), "freedom_flex")[
-        "breakdown"
-    ]["risk"]
-
-    cards, far_state = wallet()
-    far_state["cards"]["freedom_flex"]["statement_close"] = (
-        date.today() + timedelta(days=30)
-    ).isoformat()
-    far_risk = find(engine.rank(far_state, "groceries", 400.0, cards), "freedom_flex")[
-        "breakdown"
-    ]["risk"]
-
-    assert far_risk > soon_risk, (far_risk, soon_risk)
-    assert abs(far_risk - soon_risk * engine.STATEMENT_FAR_DISCOUNT) < 1e-9
-
-
 # --- adapter ---------------------------------------------------------------
 
 
@@ -180,7 +159,6 @@ class FakeAccount:
         self.current_balance = balance
         self.card_product = card_product
         self.card_product_id = getattr(card_product, "vectormint_card_id", None)
-        self.statement_close = None
 
 
 def test_adapter_skips_unmapped_account():
