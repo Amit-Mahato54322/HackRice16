@@ -94,7 +94,7 @@ export default function RecommendationScreen() {
           </View>
           <View style={{ flex: 1, gap: 3 }}>
             <Copy style={styles.rewardTitle}>Earn {reward}</Copy>
-            <Copy style={{ color: theme.colors.green, fontSize: 13 }}>
+            <Copy style={{ color: theme.colors.accent, fontSize: 13 }}>
               {result.rewardDetail}
             </Copy>
           </View>
@@ -116,7 +116,7 @@ export default function RecommendationScreen() {
           <Icon
             name={below ? "check-circle" : "alert-circle"}
             size={16}
-            color={below ? theme.colors.green : theme.colors.warning}
+            color={below ? theme.colors.accent : theme.colors.warning}
           />
           <Copy
             style={[
@@ -144,7 +144,7 @@ export default function RecommendationScreen() {
                 </View>
                 <View style={{ alignItems: "flex-end", flexShrink: 1 }}>
                   <Copy
-                    style={{ fontWeight: "600", color: theme.colors.green }}
+                    style={{ fontWeight: "600", color: theme.colors.accent }}
                   >
                     {alternative.rewardLabel}
                   </Copy>
@@ -191,7 +191,7 @@ export default function RecommendationScreen() {
                 gap: 10,
                 backgroundColor:
                   card.id === best.id
-                    ? theme.colors.mint
+                    ? theme.colors.accentSurface
                     : theme.colors.surface,
               }}
             >
@@ -268,13 +268,13 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 10,
     borderRadius: 16,
-    backgroundColor: theme.colors.mint,
+    backgroundColor: theme.colors.accentSurface,
   },
   rewardIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#D4E7D5",
+    backgroundColor: theme.colors.accentSurfaceStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -282,21 +282,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 27,
     fontWeight: "600",
-    color: theme.colors.green,
+    color: theme.colors.accent,
     letterSpacing: -0.4,
   },
   threshold: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: theme.colors.mint,
+    backgroundColor: theme.colors.accentSurface,
     paddingHorizontal: 20,
     paddingVertical: 8,
   },
   thresholdText: {
     fontSize: 12,
     lineHeight: 18,
-    color: theme.colors.green,
+    color: theme.colors.accent,
     flex: 1,
   },
 });

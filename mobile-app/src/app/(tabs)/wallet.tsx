@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
+import { theme } from "@/theme";
 import {
   Badge,
   CardRow,
@@ -40,7 +41,10 @@ export default function WalletScreen() {
         {cards.map((card) => (
           <View
             key={card.id}
-            style={{ borderBottomWidth: 1, borderBottomColor: "#E1E6DD" }}
+            style={{
+              borderBottomWidth: 1,
+              borderBottomColor: theme.colors.border,
+            }}
           >
             <CardRow card={card} onPress={() => setSelected(card)} />
           </View>

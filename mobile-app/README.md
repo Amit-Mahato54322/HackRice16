@@ -1,6 +1,8 @@
 # CreditPick
 
-A native React Native + Expo SDK 57 + TypeScript frontend demo. Warm off-white surfaces, forest-green cards and buttons, mint panels, and Feather line icons. No HTML, WebView, backend, authentication, bank integration, or microphone access.
+A native React Native + Expo SDK 57 + TypeScript frontend demo. Dark charcoal surfaces, soft coral-red accents, raised panels, and Feather line icons. No HTML, WebView, backend, authentication, bank integration, or microphone access.
+
+The dark theme uses semantic color tokens, light status-bar content, dark keyboards, and a matching native navigation theme. Existing screen sizes, safe areas, font scaling, touch targets, and interactions are preserved. Warnings use amber with text/icons, keeping them distinct from red brand accents. Primary text/accent combinations were checked for at least 4.5:1 contrast. The styling follows Apple's [2026 iOS branding guidance](https://developer.apple.com/videos/play/wwdc2026/251/) and [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials): restrained accent color, familiar navigation, and separation between controls and content. This change uses opaque layered surfaces; it does not add a Liquid Glass renderer or replace the existing navigator.
 
 ## Run
 

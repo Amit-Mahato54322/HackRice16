@@ -25,7 +25,7 @@ export type IconName = ComponentProps<typeof Feather>["name"];
 export function Icon({
   name,
   size = 22,
-  color = c.green,
+  color = c.accent,
 }: {
   name: IconName;
   size?: number;
@@ -73,16 +73,16 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={c.surface} />
+        <ActivityIndicator color={secondary ? c.accent : c.onAccent} />
       ) : (
         <>
-          <Copy style={[s.buttonText, secondary && { color: c.green }]}>
+          <Copy style={[s.buttonText, secondary && { color: c.accent }]}>
             {title}
           </Copy>
           {icon && (
             <Icon
               name={icon}
-              color={secondary ? c.green : c.surface}
+              color={secondary ? c.accent : c.onAccent}
               size={20}
             />
           )}
@@ -126,11 +126,11 @@ export function IconButton({
       onPress={onPress}
       style={({ pressed }) => [
         s.iconButton,
-        filled && { backgroundColor: c.green },
+        filled && { backgroundColor: c.accent },
         pressed && s.pressed,
       ]}
     >
-      <Icon name={name} color={filled ? c.surface : c.green} />
+      <Icon name={name} color={filled ? c.onAccent : c.accent} />
     </Pressable>
   );
 }
@@ -211,7 +211,7 @@ export function Leaf({ small = false }: { small?: boolean }) {
           height: small ? 20 : 30,
           borderTopLeftRadius: 20,
           borderBottomRightRadius: 20,
-          backgroundColor: "#D2E8CF",
+          backgroundColor: c.cardMark,
           transform: [{ rotate: "30deg" }],
         }}
       />
@@ -220,7 +220,7 @@ export function Leaf({ small = false }: { small?: boolean }) {
           position: "absolute",
           width: 1.5,
           height: small ? 16 : 25,
-          backgroundColor: "#739B75",
+          backgroundColor: c.cardMarkStem,
           left: small ? 6 : 10,
           top: small ? 10 : 13,
           transform: [{ rotate: "30deg" }],
@@ -255,7 +255,7 @@ export function CardVisual({
         <Leaf small={!large} />
         {large && best && (
           <View style={s.best}>
-            <Icon name="check" size={12} color="#E6F2E5" />
+            <Icon name="check" size={12} color={c.cardInk} />
             <Copy style={s.bestText}>Best match</Copy>
           </View>
         )}
@@ -268,7 +268,7 @@ export function CardVisual({
       <View style={[s.row, { marginTop: large ? (compact ? 8 : 24) : 0 }]}>
         <Copy
           style={{
-            color: "#F1F5EC",
+            color: c.cardInk,
             fontSize: large ? 17 : 8,
             lineHeight: large ? 24 : 10,
             letterSpacing: 2,
@@ -277,7 +277,7 @@ export function CardVisual({
           {large ? "•••• " : ""}
           {card.digits}
         </Copy>
-        {large && <Icon name="wifi" color="#B6D4BD" size={22} />}
+        {large && <Icon name="wifi" color={c.cardMark} size={22} />}
       </View>
     </View>
   );
@@ -339,7 +339,7 @@ export function WalletSummary({
     return (
       <Panel>
         <ActivityIndicator
-          color={c.green}
+          color={c.accent}
           accessibilityLabel="Loading wallet"
         />
       </Panel>
@@ -348,7 +348,7 @@ export function WalletSummary({
   return (
     <Panel
       style={{
-        backgroundColor: "#EEF3EA",
+        backgroundColor: c.surface,
         gap: dense ? 6 : compact ? 10 : 20,
         padding: dense ? 10 : compact ? 12 : 20,
       }}
@@ -485,11 +485,11 @@ export const s = StyleSheet.create({
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    backgroundColor: "#E0EBDD",
+    backgroundColor: c.accentSurface,
     borderRadius: 6,
   },
   badgeText: {
-    color: c.green,
+    color: c.accent,
     fontSize: 10,
     lineHeight: 17,
     fontWeight: "600",
@@ -497,7 +497,7 @@ export const s = StyleSheet.create({
   button: {
     minHeight: 56,
     borderRadius: 15,
-    backgroundColor: c.green,
+    backgroundColor: c.accent,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
@@ -505,12 +505,12 @@ export const s = StyleSheet.create({
     gap: 12,
   },
   buttonText: {
-    color: c.surface,
+    color: c.onAccent,
     fontWeight: "600",
     flexShrink: 1,
     textAlign: "center",
   },
-  secondary: { backgroundColor: c.mint },
+  secondary: { backgroundColor: c.accentSurface },
   pressed: { opacity: 0.65 },
   textAction: {
     minHeight: 44,
@@ -518,7 +518,7 @@ export const s = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 4,
   },
-  link: { fontSize: 14, fontWeight: "600", color: c.green },
+  link: { fontSize: 14, fontWeight: "600", color: c.accent },
   iconButton: {
     width: 44,
     height: 44,
@@ -537,13 +537,13 @@ export const s = StyleSheet.create({
     width: 250,
     height: 250,
     borderRadius: 125,
-    borderColor: "#FFFFFF10",
+    borderColor: c.cardDecoration,
     borderWidth: 35,
     right: -100,
     top: -85,
   },
   cardName: {
-    color: "#F7FAF2",
+    color: c.cardInk,
     fontSize: 23,
     lineHeight: 30,
     fontWeight: "500",
@@ -553,12 +553,12 @@ export const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#FFFFFF20",
+    backgroundColor: c.cardBadge,
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  bestText: { color: "#E6F2E5", fontSize: 11, lineHeight: 17 },
+  bestText: { color: c.cardInk, fontSize: 11, lineHeight: 17 },
   cardRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -567,28 +567,28 @@ export const s = StyleSheet.create({
   },
   stats: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   stat: { flex: 1, minWidth: 70, gap: 4 },
-  statBorder: { paddingLeft: 12, borderLeftWidth: 1, borderColor: "#D8E2D5" },
+  statBorder: { paddingLeft: 12, borderLeftWidth: 1, borderColor: c.border },
   statValue: {
     fontSize: 22,
     lineHeight: 28,
     fontWeight: "600",
     letterSpacing: -0.8,
   },
-  track: { height: 7, borderRadius: 5, backgroundColor: "#DAE3D7" },
-  trackFill: { height: 7, borderRadius: 5, backgroundColor: c.greenLight },
+  track: { height: 7, borderRadius: 5, backgroundColor: c.track },
+  trackFill: { height: 7, borderRadius: 5, backgroundColor: c.accentBright },
   marker: {
     width: 2,
     height: 15,
     position: "absolute",
     top: -4,
-    backgroundColor: "#849581",
+    backgroundColor: c.marker,
   },
   bubble: {
     alignSelf: "flex-start",
     maxWidth: "89%",
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderWidth: 1,
     borderColor: c.border,
     borderRadius: 17,
@@ -596,14 +596,14 @@ export const s = StyleSheet.create({
   },
   userBubble: {
     alignSelf: "flex-end",
-    backgroundColor: c.mint,
-    borderColor: c.mint,
+    backgroundColor: c.accentSurface,
+    borderColor: c.accentSurface,
     borderBottomLeftRadius: 17,
     borderBottomRightRadius: 5,
   },
-  modal: { flex: 1, backgroundColor: "#14291D66", justifyContent: "flex-end" },
+  modal: { flex: 1, backgroundColor: c.scrim, justifyContent: "flex-end" },
   sheet: {
-    backgroundColor: c.background,
+    backgroundColor: c.elevated,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     padding: 24,
@@ -615,7 +615,7 @@ export const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#C9D2C7",
+    backgroundColor: c.marker,
     alignSelf: "center",
   },
 });

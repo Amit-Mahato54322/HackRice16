@@ -29,7 +29,7 @@ export default function HomeScreen() {
     <Screen fit>
       <View style={s.row}>
         <Copy style={styles.wordmark}>
-          CreditPick<Copy style={{ color: theme.colors.greenLight }}>.</Copy>
+          CreditPick<Copy style={{ color: theme.colors.accentBright }}>.</Copy>
         </Copy>
         <Pressable
           accessibilityRole="button"
@@ -37,7 +37,7 @@ export default function HomeScreen() {
           onPress={() => router.navigate("/settings")}
           style={styles.avatar}
         >
-          <Copy style={{ color: theme.colors.green, fontWeight: "600" }}>
+          <Copy style={{ color: theme.colors.accent, fontWeight: "600" }}>
             JD
           </Copy>
         </Pressable>
@@ -79,7 +79,7 @@ export default function HomeScreen() {
           onPress={() => start()}
           style={({ pressed }) => [styles.microphone, pressed && s.pressed]}
         >
-          <Icon name="mic" size={32} color="#FFFFFF" />
+          <Icon name="mic" size={32} color={theme.colors.onAccent} />
         </Pressable>
         <View style={{ alignItems: "center", gap: 0, flexShrink: 1 }}>
           <Copy style={styles.askTitle}>What are you buying?</Copy>
@@ -108,11 +108,11 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#E4ECDD",
+    backgroundColor: theme.colors.accentSurface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#D7E1D0",
+    borderColor: theme.colors.border,
   },
   heading: {
     fontSize: 29,
@@ -131,11 +131,11 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: theme.colors.green,
+    backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 0,
-    boxShadow: "0px 6px 16px #184F3B18",
+    boxShadow: "0px 6px 20px #00000040",
   },
   askTitle: {
     fontSize: 19,
