@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from app.scoring import adapter, engine, rewards  # noqa: E402
+from app.scoring import adapter, engine, limits, rewards  # noqa: E402
 
 
 def wallet(**kwargs):
@@ -196,6 +196,42 @@ def test_catalog_supplies_rates():
     catalog = rewards.load_catalog()
     assert catalog["amex_bcp"]["rates"]["groceries"] == 0.06
     assert rewards.lookup(catalog, "nope") is None
+
+
+# --- user-entered credit limits --------------------------------------------
+
+
+def test_entered_limit_overrides_seed():
+    """A limit the user enters replaces whatever the wallet carried."""
+    limits.clear()
+    try:
+        limits.set_limit("amex_bcp", 2000.0)
+        cards, state = wallet()
+        limits.apply(state)
+        assert state["cards"]["amex_bcp"]["limit"] == 2000.0
+        # $1,240 of $2,000 is 62%; +$400 crosses the 68.9% step.
+        result = engine.rank(state, "groceries", 400.0, cards)
+        assert find(result, "amex_bcp")["breakdown"]["risk"] < 0
+    finally:
+        limits.clear()
+
+
+def test_missing_limit_disqualifies_rather_than_guessing():
+    """No entered limit and none synced means excluded, never defaulted."""
+    cards, state = wallet()
+    state["cards"]["amex_bcp"]["limit"] = None
+    limits.apply(state)
+    result = engine.rank(state, "groceries", 100.0, cards)
+    reasons = {d["card"]: d["reason"] for d in result["disqualified"]}
+    assert reasons["amex_bcp"] == "no credit limit on record"
+
+
+def test_clearing_a_limit_removes_it():
+    limits.clear()
+    limits.set_limit("citi_dc", 9000.0)
+    assert limits.get_limit("citi_dc") == 9000.0
+    limits.set_limit("citi_dc", None)
+    assert limits.get_limit("citi_dc") is None
 
 
 if __name__ == "__main__":

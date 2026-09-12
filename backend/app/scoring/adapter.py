@@ -110,6 +110,10 @@ def demo_wallet(protection_mode=False, baseline_score=DEFAULT_BASELINE_SCORE):
 
     Deliberately rigged so the interesting cases are reachable: one card at
     68% utilization, and one sitting just under a step threshold.
+
+    The limits here are stand-ins for values the user would enter by hand --
+    Nessie publishes none of them. Anything entered via PUT /cards/{card}/limit
+    overrides them (see app/scoring/limits.py).
     """
     state = {
         "dollars_per_fico_point": (

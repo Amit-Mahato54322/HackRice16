@@ -13,7 +13,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.mock import load_mock
-from app.scoring import adapter, engine
+from app.scoring import adapter, engine, limits
 from app.scoring.categorize import categorize
 
 router = APIRouter(tags=["recommend"])
@@ -66,6 +66,10 @@ def recommend(request: RecommendRequest):
     # this scores the seeded demo wallet. Swapping in adapter.build_wallet(...)
     # with real rows is the only change needed here.
     cards, state = adapter.demo_wallet(protection_mode=request.protection_mode)
+
+    # Credit limits are user-entered (PUT /cards/{card}/limit) because no API
+    # in the stack publishes them. Anything entered overrides the seeded value.
+    limits.apply(state)
 
     category = request.category or categorize(request.merchant)
     result = engine.rank(state, category, request.amount, cards)
