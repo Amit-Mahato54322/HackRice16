@@ -51,6 +51,7 @@ export default function ConversationScreen() {
   const scroll = useRef<ScrollView>(null);
   const request = useRef<AbortController | null>(null);
   const messageRequest = useRef<AbortController | null>(null);
+  const playbackRequest = useRef<AbortController | null>(null);
   const [sending, setSending] = useState(false);
   const wave = useRef(new Animated.Value(0)).current;
 
@@ -61,13 +62,17 @@ export default function ConversationScreen() {
       return () => {
         request.current?.abort();
         messageRequest.current?.abort();
+        playbackRequest.current?.abort();
+        void services.playback.stop().catch(() => {});
         setListening(false);
       };
-    }, []),
+    }, [services]),
   );
   useEffect(() => {
     request.current?.abort();
     messageRequest.current?.abort();
+    playbackRequest.current?.abort();
+    void services.playback.stop().catch(() => {});
     setMessage("");
     setReply("");
     setEditing(null);
@@ -75,7 +80,7 @@ export default function ConversationScreen() {
     setLoading(false);
     setSending(false);
     setListening(false);
-  }, [flowId, typing]);
+  }, [flowId, typing, services]);
   useEffect(() => {
     if (typing !== "1") return;
     const focus = setTimeout(() => composer.current?.focus(), 350);
@@ -184,6 +189,12 @@ export default function ConversationScreen() {
       ]);
       setReply("");
       setMessage("");
+      if (turn.voice) {
+        playbackRequest.current?.abort();
+        const playing = new AbortController();
+        playbackRequest.current = playing;
+        void services.playback.play(turn.voice, playing.signal).catch(() => {});
+      }
     } catch (error) {
       if (!pending.signal.aborted) {
         setReply(

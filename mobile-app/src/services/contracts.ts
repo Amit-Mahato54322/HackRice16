@@ -44,6 +44,7 @@ export type Recommendation = {
 export type ConversationTurn = {
   reply: string;
   purchasePatch?: Partial<Purchase>;
+  voice?: VoiceOutput;
 };
 export type VoiceEvent =
   | {

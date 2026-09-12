@@ -4,6 +4,7 @@ import type {
   CardOption,
   CreditPickServices,
   Recommendation,
+  VoiceOutput,
   WalletCard,
   WalletSnapshot,
 } from "./contracts";
@@ -108,7 +109,29 @@ type RecommendResponse = {
   voice: { transcript: string; audio?: { url: string; mimeType: string } };
 };
 
+type ConversationResponse = {
+  reply: string;
+  purchasePatch?: { store?: string; amount?: number } | null;
+  voice?: { transcript: string; audio?: { url: string; mimeType: string } };
+};
+
 // --- mapping ----------------------------------------------------------------
+
+/** The backend serves clips from /static, relative to the API host; expo-audio
+ * needs an absolute URL. Shared by /recommend and /conversation's voice. */
+function toAbsoluteVoice(voice: VoiceOutput): VoiceOutput {
+  return {
+    ...voice,
+    audio: voice.audio
+      ? {
+          ...voice.audio,
+          url: voice.audio.url.startsWith("http")
+            ? voice.audio.url
+            : `${BASE_URL}${voice.audio.url}`,
+        }
+      : undefined,
+  };
+}
 
 function toWalletCard(card: DashboardCard, index: number): WalletCard {
   const limit = card.credit_limit || 0;
@@ -232,19 +255,7 @@ function toRecommendation(
           : undefined,
       },
     ],
-    voice: {
-      ...body.voice,
-      // The backend serves clips from /static, relative to the API host.
-      // expo-audio needs an absolute URL.
-      audio: body.voice.audio
-        ? {
-            ...body.voice.audio,
-            url: body.voice.audio.url.startsWith("http")
-              ? body.voice.audio.url
-              : `${BASE_URL}${body.voice.audio.url}`,
-          }
-        : undefined,
-    },
+    voice: toAbsoluteVoice(body.voice),
   };
 }
 
@@ -308,23 +319,25 @@ export function createHttpServices(
       // figure the engine did not compute is rejected server-side, so a reply
       // is either grounded or plainer -- never invented.
       async sendText(text, purchase, signal) {
-        const body = await request<{
-          reply: string;
-          purchasePatch?: { store?: string; amount?: number } | null;
-        }>("/conversation", signal, {
-          method: "POST",
-          body: JSON.stringify({
-            message: text,
-            purchase: {
-              store: purchase.store,
-              amount: purchase.amount,
-              category: TO_ENGINE[purchase.category],
-            },
-          }),
-        });
+        const body = await request<ConversationResponse>(
+          "/conversation",
+          signal,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              message: text,
+              purchase: {
+                store: purchase.store,
+                amount: purchase.amount,
+                category: TO_ENGINE[purchase.category],
+              },
+            }),
+          },
+        );
         return {
           reply: body.reply,
           purchasePatch: body.purchasePatch ?? undefined,
+          voice: body.voice ? toAbsoluteVoice(body.voice) : undefined,
         };
       },
     },
