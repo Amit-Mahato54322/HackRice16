@@ -3,7 +3,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db import Base, engine
+import app.models  # noqa: F401 — registers all models on Base.metadata
 from app.routers import auth, cards, dashboard, nessie, recommend
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="CreditPick API")
 

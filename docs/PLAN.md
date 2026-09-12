@@ -5,8 +5,8 @@ Someone standing in a store with several credit cards doesn't know which one ear
 
 ## 2. User Flow
 1. User signs in (seeded demo user, JWT auth).
-2. Dashboard loads the demo customer's credit accounts from Capital One Nessie (mock accounts with real balance + credit_limit fields).
-3. User maps each Nessie account to a real card product via a VectorMint-backed searchable picker (necessary because Nessie account names don't map to real card products automatically).
+2. Dashboard loads the demo customer's credit accounts — balance from Nessie, credit limit from our Postgres seed data (set once by the seed script at account-creation time, never touched again).
+3. User maps each Nessie account to a real card product via a VectorMint-backed searchable picker. No manual data entry — credit limit, used amount, and remaining are all computed and displayed automatically.
 4. Dashboard shows connected cards, balances, credit limit, and utilization %.
 5. User taps the voice button and speaks a purchase description, e.g. "I'm buying groceries at Whole Foods, around $90."
 6. Audio is uploaded to the backend, sent to Gemini (audio in, structured JSON out) → `{merchant, amount, category}`. The merchant name is also cross-referenced against the Nessie merchant catalog for category validation. No clarifying follow-up questions in v1 — single shot only.
@@ -26,7 +26,7 @@ Someone standing in a store with several credit cards doesn't know which one ear
                                     |
                                     v
                     Postgres (linked cards + cached VectorMint
-                        reward rates + Nessie balance/limit)
+                        reward rates + Nessie balance + user-entered credit_limit)
                                     |
                                     v
                             Scoring engine (ranks all cards)
@@ -43,7 +43,7 @@ Mobile (Expo) talks only to the FastAPI backend. The backend is the only thing t
 ## 4. Data Model (Postgres)
 
 - **users**(id, email, password_hash)
-- **linked_accounts**(id, user_id, nessie_account_id, nessie_customer_id, official_name, mask, credit_limit, current_balance, last_synced_at, card_product_id nullable FK)
+- **linked_accounts**(id, user_id, nessie_account_id, nessie_customer_id, official_name, mask, credit_limit, current_balance, last_synced_at, card_product_id nullable FK) — `credit_limit` is written once by the seed script at account-creation time and never changes; `current_balance` is synced live from Nessie. `amount_used`, `amount_remaining`, and `utilization_pct` are computed fields (`balance`, `credit_limit - balance`, `balance / credit_limit`) — not stored, derived on read. Nessie does not store credit_limit (confirmed by API test).
 - **card_products**(id, vectormint_card_id, display_name, issuer, art_url, cached_reward_json, cached_at) — reward_json is the cached VectorMint response for that card's category rates
 
 A `linked_accounts` row with `card_product_id = null` means "synced from Nessie but not yet mapped to a real card" — excluded from scoring, shown on the dashboard as "not configured."
@@ -51,10 +51,10 @@ A `linked_accounts` row with `card_product_id = null` means "synced from Nessie 
 ## 5. Key API Endpoints (FastAPI)
 
 - `POST /auth/login`
-- `POST /nessie/sync` — fetch the demo customer's credit accounts from Nessie, upsert into `linked_accounts` (balance + credit_limit)
+- `POST /nessie/sync` — fetch the demo customer's credit accounts from Nessie, upsert into `linked_accounts` (balance only — Nessie does not return credit_limit)
 - `GET /nessie/merchants?q=` — proxy Nessie merchant search; used internally for category cross-reference during `/recommend`
 - `GET /cards/search?q=` — search the VectorMint catalog, backs the card-mapping picker
-- `POST /cards/map` — map a `linked_account` to a `card_product`; fetches + caches VectorMint reward data at this moment (not fetched again per recommendation)
+- `POST /cards/map` — map a `linked_account` to a `card_product`; fetches + caches VectorMint reward data at this moment (not fetched again per recommendation); no credit_limit input — already seeded
 - `GET /dashboard` — returns cards, balances, utilization for the signed-in user
 - `POST /recommend` — multipart audio upload; runs the full pipeline (Gemini extraction + Nessie merchant lookup → scoring → ElevenLabs audio); returns the audio + the full ranked breakdown as JSON for the "Why" screen
 
@@ -68,12 +68,22 @@ Endpoints used:
 | Endpoint | Purpose |
 |---|---|
 | `GET /customers/{id}/accounts` | List demo customer's accounts; filter `type=credit card` |
-| `GET /accounts/{id}` | Single account detail — `balance`, `credit_limit` |
+| `GET /accounts/{id}` | Single account detail — `balance` only (`credit_limit` not supported by Nessie) |
 | `GET /merchants` | Full merchant list with categories; cached in memory, used for category cross-reference |
 | `GET /merchants/{id}` | Single merchant detail |
 | `GET /accounts/{id}/purchases` | Transaction history shown on the "Why" screen |
 
-Demo setup: create one Nessie customer with 3–4 credit card accounts at varied balances and limits. Store the customer ID as `NESSIE_CUSTOMER_ID` in `.env`.
+Demo setup: a one-time seed script (`backend/scripts/seed_nessie.py`) creates the Nessie customer + accounts and simultaneously writes `linked_accounts` rows in Postgres with hardcoded credit limits. After that, the app never touches credit limits again — only balance is synced live from Nessie.
+
+Seeded accounts:
+
+| Card | Nessie balance | Credit limit (seeded) | Used | Remaining |
+|---|---|---|---|---|
+| Chase Sapphire Preferred | $2,500 | $10,000 | 25% | $7,500 |
+| Capital One Venture | $5,200 | $8,000 | 65% | $2,800 |
+| Bank of America Cash Rewards | $800 | $5,000 | 16% | $4,200 |
+
+Store `NESSIE_CUSTOMER_ID` in `.env` after the seed script runs.
 
 ## 7. Scoring Formula (v1)
 
@@ -103,17 +113,18 @@ Backend and frontend are meant to run as parallel workstreams, not a relay race.
 - Backend (~90 min): FastAPI app skeleton; SQLAlchemy models (`users`, `linked_accounts`, `card_products`); Postgres schema; every route file registered with a stub handler; the response JSON for `/auth/login`, `/dashboard`, `/cards/search`, `/cards/map`, and `/recommend` written as literal `backend/mock/*.json` fixtures and committed *before* any real logic; permissive CORS enabled immediately. Done when `/docs` renders every route and each stub returns its fixture's exact shape.
 - Frontend (~90 min, fully parallel — zero backend dependency): Expo project init, Expo Router layout, Login / Dashboard / Voice / Why screens stubbed and wired to the mock fixtures, not a live server. Done when a user can tap through all four screens end-to-end on fake data with no backend running at all.
 
-**M2 — Auth** (~1h)
-- Backend (~45 min): `POST /auth/login` — verify the seeded demo user, return a real JWT; seed script creates that user. Done when a curl with the seeded credentials returns a JWT matching the M1 fixture shape.
-- Frontend (~15 min, can happen any time after M1, independent of backend's pace): swap the Login screen's mock call for the real `/auth/login` URL; store the JWT; redirect to Dashboard. Shape hasn't changed since M1, so this is a base-URL swap, not new UI.
+**M2 — Auth** ~~(~1h)~~ **DEFERRED — out of scope for demo**
+- No login/logout screen. App boots directly to Dashboard.
+- All backend endpoints use a hardcoded `DEMO_USER_ID = 1` (seeded by `seed_nessie.py`).
+- Single demo user is sufficient for HackRice demo — multi-user auth adds no value to judges.
 
 **M3 — Nessie account sync** (~1.5h)
 - Backend (~75 min): Nessie client wrapper (list customer accounts, get account detail); `POST /nessie/sync` upserts into `linked_accounts`; `GET /dashboard` returns the real account list matching the M1 fixture shape. Done when sync runs against the real Nessie sandbox and `/dashboard` reflects real balances.
 - Frontend (~15 min): swap Dashboard's mock data source for `GET /dashboard`. Already renders correctly since M1 — this is a data-source swap, not new UI.
 
 **M4 — VectorMint card mapping** (~1.5h)
-- Backend (~75 min): VectorMint client wrapper (search, fetch reward data); `GET /cards/search?q=` proxies the catalog; `POST /cards/map` links a `linked_account` to a `card_product` and caches the reward JSON. Done when mapping a seeded account to a real card persists a `card_product` row and `/dashboard` shows it as "configured."
-- Frontend (~15 min): swap the card-mapping picker's mock search results for `GET /cards/search`; wire the confirm button to `POST /cards/map`. The picker UI itself was already built and tested against mocks in M1 — this is wiring, not new UI.
+- Backend (~75 min): VectorMint client wrapper (search, fetch reward data); `GET /cards/search?q=` proxies the catalog; `POST /cards/map` links a `linked_account` to a `card_product` and caches the reward JSON. Credit limit is already in the DB from the seed script — no user input. Done when mapping a seeded account persists a `card_product` row and `/dashboard` shows it as "configured" with utilization fully computed.
+- Frontend (~15 min): swap the card-mapping picker's mock search results for `GET /cards/search`; wire the confirm button to `POST /cards/map`. No extra input fields — credit_limit, used, and remaining are all pre-populated from seed data.
 
 **M5 — Scoring engine** (~1h, backend-only — no frontend task, nothing to block)
 - Backend: pure function `score_cards(cards, category, amount)` — reward_rate × amount, projected utilization, utilization_flag; unit-tested standalone with hardcoded inputs, no HTTP, no DB. Done when 3–4 hand-written cases (clear winner, tie, utilization-flagged card, unmapped card excluded) all pass.
