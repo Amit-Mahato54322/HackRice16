@@ -4,16 +4,11 @@ The engine takes plain dicts and knows nothing about the database or Nessie.
 Everything that translates between them lives here, so the engine stays
 unit-testable with no server, no DB, and no network.
 
-Two fields Nessie does not provide and that must be set locally per account:
-
-- `credit_limit` -- the Nessie account object has no such field, and every
-  utilization figure, the risk term, and both disqualifiers divide by it
-- `statement_close` -- drives the float term and the risk discount
-
-An account missing either is surfaced rather than silently defaulted.
+`credit_limit` is the one field Nessie does not provide that the engine needs:
+the Nessie account object has no such field, and every utilization figure, the
+risk term, and both disqualifiers divide by it. It must be set locally per
+account. An account missing it is surfaced rather than silently defaulted.
 """
-
-from datetime import date, timedelta
 
 from app.scoring import rewards
 
@@ -92,9 +87,6 @@ def build_wallet(
             "linked_account_id": account.id,
             "balance": float(account.current_balance or 0.0),
             "limit": float(account.credit_limit or 0.0),
-            # Neither of these comes from Nessie -- both are set locally per
-            # account. See the module docstring.
-            "statement_close": getattr(account, "statement_close", None),
         }
 
     state = {
@@ -113,18 +105,12 @@ def build_wallet(
 # --- demo wallet -----------------------------------------------------------
 
 
-def demo_wallet(today=None, protection_mode=False, baseline_score=DEFAULT_BASELINE_SCORE):
+def demo_wallet(protection_mode=False, baseline_score=DEFAULT_BASELINE_SCORE):
     """Seeded wallet used when no accounts are linked yet.
 
     Deliberately rigged so the interesting cases are reachable: one card at
-    68% utilization, one just under a step threshold, and a spread of statement
-    dates. Dates are relative to today so the demo never rots.
+    68% utilization, and one sitting just under a step threshold.
     """
-    today = today or date.today()
-
-    def close_in(days):
-        return (today + timedelta(days=days)).isoformat()
-
     state = {
         "dollars_per_fico_point": (
             PROTECTION_MODE_DOLLARS_PER_FICO_POINT
@@ -138,31 +124,26 @@ def demo_wallet(today=None, protection_mode=False, baseline_score=DEFAULT_BASELI
                 "linked_account_id": 1,
                 "balance": 1240.00,
                 "limit": 5000.00,
-                "statement_close": close_in(16),
             },
             "citi_dc": {
                 "linked_account_id": 2,
                 "balance": 900.00,
                 "limit": 9000.00,
-                "statement_close": close_in(3),
             },
             "freedom_flex": {
                 "linked_account_id": 3,
                 "balance": 2040.00,
                 "limit": 3000.00,
-                "statement_close": close_in(9),
             },
             "chase_sapphire_reserve": {
                 "linked_account_id": 4,
                 "balance": 1800.00,
                 "limit": 20000.00,
-                "statement_close": close_in(25),
             },
             "venture_x": {
                 "linked_account_id": 5,
                 "balance": 800.00,
                 "limit": 15000.00,
-                "statement_close": close_in(12),
             },
         },
     }
