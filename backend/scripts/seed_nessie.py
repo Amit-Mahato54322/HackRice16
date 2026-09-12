@@ -125,6 +125,35 @@ def main():
             f"remaining=${remaining:,.0f}"
         )
 
+    # 4 — Print all data: Nessie raw + Postgres computed
+    print("\n" + "=" * 60)
+    print("  NESSIE RAW DATA")
+    print("=" * 60)
+    import json
+    nessie_accounts = httpx.get(
+        f"{NESSIE_BASE}/customers/{customer_id}/accounts?key={NESSIE_API_KEY}"
+    ).json()
+    print(json.dumps(nessie_accounts, indent=2))
+
+    print("\n" + "=" * 60)
+    print("  POSTGRES DATA (linked_accounts)")
+    print("=" * 60)
+    all_accounts = db.query(LinkedAccount).filter_by(user_id=user.id).all()
+    print(f"{'Card':<35} {'Balance':>10} {'Limit':>10} {'Used':>8} {'Remaining':>12} {'Util%':>6}")
+    print("-" * 85)
+    for a in all_accounts:
+        limit   = a.credit_limit or 0
+        balance = a.current_balance or 0
+        util    = round(balance / limit * 100, 1) if limit else 0
+        print(
+            f"{a.official_name:<35} "
+            f"${balance:>9,.0f} "
+            f"${limit:>9,.0f} "
+            f"${balance:>7,.0f} "
+            f"${(limit - balance):>11,.0f} "
+            f"{util:>5}%"
+        )
+
     db.close()
     print("\nSeed complete. Run POST /nessie/sync to refresh balances anytime.")
 
