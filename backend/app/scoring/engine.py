@@ -8,13 +8,16 @@ Each card is scored in dollars:
 
     score = reward + float - risk
 
-Scope note: the engine models only inputs that come from a real data source --
-VectorMint reward rates and Nessie balances. Category caps, sign-up bonuses,
-and purchase-protection terms are deliberately absent: no API publishes them,
-and scoring on hand-entered figures would mean the output was driven by our own
-assumptions rather than by data. The tradeoff is that `reward` is a straight
-rate lookup; the modelling that remains is in `risk_term`, which prices
-utilization damage in dollars instead of flagging it.
+Scope note: Nessie is the only external API in the stack, supplying balances,
+purchase history and merchant categories. Reward rates come from a small local
+catalog (see rewards.py) because no API publishes them. Category caps, sign-up
+bonuses and purchase-protection terms are deliberately absent: modelling them
+would mean inventing cap-usage and claim figures no source publishes, so the
+output would be driven by our assumptions rather than by data.
+
+The tradeoff is that `reward` is a straight rate lookup. The modelling that
+remains is `risk_term`, which prices utilization damage in dollars instead of
+flagging it -- which is still a trade no rewards app makes.
 """
 
 from datetime import date

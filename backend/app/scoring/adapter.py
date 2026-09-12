@@ -1,8 +1,16 @@
 """Bridge between the team's SQLAlchemy rows and the pure scoring engine.
 
-The engine takes plain dicts and knows nothing about the database, Nessie, or
-VectorMint. Everything that translates between them lives here, so the engine
-stays unit-testable with no server, no DB, and no network.
+The engine takes plain dicts and knows nothing about the database or Nessie.
+Everything that translates between them lives here, so the engine stays
+unit-testable with no server, no DB, and no network.
+
+Two fields Nessie does not provide and that must be set locally per account:
+
+- `credit_limit` -- the Nessie account object has no such field, and every
+  utilization figure, the risk term, and both disqualifiers divide by it
+- `statement_close` -- drives the float term and the risk discount
+
+An account missing either is surfaced rather than silently defaulted.
 """
 
 from datetime import date, timedelta
@@ -56,19 +64,18 @@ def build_wallet(
             )
             continue
 
+        # CardProduct.vectormint_card_id is used purely as the catalog key --
+        # the identifier of a real card product. No reward data is fetched
+        # from anywhere; rates come from card_db.json.
         product = getattr(account, "card_product", None)
-        catalog_key = getattr(product, "vectormint_card_id", None)
-        fallback = catalog.get(catalog_key, {}) if catalog_key else {}
-        card = rewards.normalize_reward_json(
-            getattr(product, "cached_reward_json", None), fallback
-        )
+        card = rewards.lookup(catalog, getattr(product, "vectormint_card_id", None))
 
         if not card:
             skipped.append(
                 {
                     "linked_account_id": account.id,
                     "display_name": account.official_name,
-                    "reason": "no reward data cached for this card product",
+                    "reason": "no reward data for this card product",
                 }
             )
             continue

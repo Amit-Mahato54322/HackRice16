@@ -167,10 +167,9 @@ def test_statement_timing_discounts_risk():
 
 
 class FakeProduct:
-    def __init__(self, vectormint_card_id, display_name, cached_reward_json=None):
+    def __init__(self, vectormint_card_id, display_name):
         self.vectormint_card_id = vectormint_card_id
         self.display_name = display_name
-        self.cached_reward_json = cached_reward_json
 
 
 class FakeAccount:
@@ -205,21 +204,20 @@ def test_adapter_survives_missing_credit_limit():
     assert result["disqualified"][0]["reason"] == "no credit limit on record"
 
 
-def test_vectormint_points_per_dollar_is_normalized():
-    """A 4x-points payload must not be read as a 400% rate."""
-    fallback = rewards.load_catalog()["amex_bcp"]
-    card = rewards.normalize_reward_json({"rates": {"groceries": 4}}, fallback)
-    assert card["rates"]["groceries"] == 0.04, card["rates"]
+def test_unknown_card_product_is_skipped():
+    """An account mapped to a card the catalog has no rates for is surfaced."""
+    product = FakeProduct("not_in_catalog", "Mystery Card")
+    accounts = [FakeAccount(1, 5000.0, card_product=product)]
+    cards, state, skipped = adapter.build_wallet(accounts)
+    assert cards == {}
+    assert skipped[0]["reason"] == "no reward data for this card product"
 
 
-def test_vectormint_payload_overrides_fallback():
-    """Cached VectorMint data wins over the local catalog when present."""
-    fallback = rewards.load_catalog()["citi_dc"]
-    card = rewards.normalize_reward_json(
-        {"rates": {"travel": 0.05}, "base_rate": 0.01}, fallback
-    )
-    assert card["rates"] == {"travel": 0.05}
-    assert card["base_rate"] == 0.01
+def test_catalog_supplies_rates():
+    """Rates come from card_db.json, keyed by card product id."""
+    catalog = rewards.load_catalog()
+    assert catalog["amex_bcp"]["rates"]["groceries"] == 0.06
+    assert rewards.lookup(catalog, "nope") is None
 
 
 if __name__ == "__main__":
