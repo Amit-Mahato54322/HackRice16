@@ -7,7 +7,7 @@ mobile-app/ARCHITECTURE.md, "Voice / ElevenLabs").
 
 import httpx
 
-from app.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
+from app.config import ELEVENLABS_API_KEY, ELEVENLABS_MODEL_ID, ELEVENLABS_VOICE_ID
 
 TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
@@ -24,7 +24,7 @@ def synthesize_speech(text: str) -> bytes:
             "Content-Type": "application/json",
             "Accept": "audio/mpeg",
         },
-        json={"text": text, "model_id": "eleven_monolingual_v1"},
+        json={"text": text, "model_id": ELEVENLABS_MODEL_ID},
         timeout=30.0,
     )
     response.raise_for_status()
