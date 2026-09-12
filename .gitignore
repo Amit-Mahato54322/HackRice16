@@ -40,3 +40,5 @@ mobile/.metro-health-check*
 # --- Misc ---
 node_modules/
 *.log
+.venv/
+venv/
