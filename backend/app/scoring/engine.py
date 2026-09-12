@@ -6,23 +6,20 @@ how a figure was produced, we trace it line by line.
 
 Each card is scored in dollars:
 
-    score = reward + protection + float - opportunity - risk
+    score = reward + float - risk
 
-`opportunity` is the piece no shipping rewards product models: consuming a
-dollar of bonus-category cap headroom today removes it from a pot that future
-spend would have used. See `shadow_prices` for how that price is derived.
+Scope note: the engine models only inputs that come from a real data source --
+VectorMint reward rates and Nessie balances. Category caps, sign-up bonuses,
+and purchase-protection terms are deliberately absent: no API publishes them,
+and scoring on hand-entered figures would mean the output was driven by our own
+assumptions rather than by data. The tradeoff is that `reward` is a straight
+rate lookup; the modelling that remains is in `risk_term`, which prices
+utilization damage in dollars instead of flagging it.
 """
 
 from datetime import date
 
 # --- tunable coefficients (no magic numbers inline) -------------------------
-
-# Purchase protection. Expected-value estimates (claim probability x payout),
-# not derived from claims data. Calibratable, and stated as such in the pitch.
-WARRANTY_COEF = 0.02
-PURCHASE_COEF = 0.01
-PRICE_COEF = 0.005
-PROTECTION_MIN = 200.0
 
 # Float: carrying the balance interest-free until it is actually due.
 GRACE_DAYS = 21
@@ -63,43 +60,11 @@ PROTECTION_MODE_UTIL = 0.30
 DEFAULT_CATEGORY = "other"
 
 
-# --- cap bookkeeping -------------------------------------------------------
-#
-# A card has two kinds of cap. A plain `caps` entry caps one category on its
-# own. A `cap_groups` entry is a single pot shared across several categories --
-# how real rotating-category cards work, and the reason headroom is genuinely
-# scarce rather than per-category free inventory. Both are addressed by a "cap
-# key": for a plain cap the key is the category name, for a group it is the
-# group name. `cap_used` is keyed the same way.
-
-
-def cap_constraints(card):
-    """Yield (cap_key, cap_dollars, [categories]) for every cap on the card."""
-    for category, cap in (card.get("caps") or {}).items():
-        yield category, cap, [category]
-    for key, group in (card.get("cap_groups") or {}).items():
-        yield key, group["cap"], list(group["categories"])
-
-
-def cap_key_for(card, category):
-    """Which cap constrains this category on this card, if any."""
-    for key, _cap, categories in cap_constraints(card):
-        if category in categories:
-            return key
-    return None
-
-
-def cap_headroom(card, card_state, category):
-    """Dollars of bonus-rate spend left for this category. None = uncapped."""
-    key = cap_key_for(card, category)
-    if key is None:
-        return None
-    caps = dict((k, c) for k, c, _ in cap_constraints(card))
-    return max(0.0, caps[key] - (card_state.get("cap_used") or {}).get(key, 0.0))
+# --- rates -----------------------------------------------------------------
 
 
 def effective_rate(card, category):
-    """Bonus rate for this category, in dollars per dollar spent."""
+    """Rate for this category, in dollars per dollar spent."""
     return card["rates"].get(category, card["base_rate"]) * card["point_value"]
 
 
@@ -107,158 +72,24 @@ def base_effective_rate(card):
     return card["base_rate"] * card["point_value"]
 
 
-# --- shadow pricing: what a dollar of cap headroom is actually worth --------
-
-
-def blended_rate(card, card_state, category, category_spend):
-    """Average rate a card would pay across a whole category's spend.
-
-    A card with $50 of 6% headroom left is not a 6% card for $4,200 of
-    projected groceries -- it is a 1% card with a rounding error attached.
-    Same split as the reward term, applied to forecast spend instead of a
-    single purchase, so alternatives are compared at the scale they'd serve.
-    """
-    headroom = cap_headroom(card, card_state, category)
-    if headroom is None:
-        return effective_rate(card, category)
-    if category_spend <= 0:
-        return base_effective_rate(card)
-    bonus_part = min(category_spend, headroom)
-    rest = category_spend - bonus_part
-    earned = bonus_part * effective_rate(card, category) + rest * base_effective_rate(card)
-    return earned / category_spend
-
-
-def best_alternative_rate(cards, state, category, exclude_id, category_spend):
-    """Best rate any *other* card can sustain across this category's spend."""
-    best = 0.0
-    for card_id, card in cards.items():
-        if card_id == exclude_id:
-            continue
-        card_state = state["cards"].get(card_id)
-        if card_state is None:
-            continue
-        best = max(best, blended_rate(card, card_state, category, category_spend))
-    return best
-
-
-def shadow_prices(cards, state):
-    """Marginal value of one dollar of cap headroom, per (card_id, cap_key).
-
-    This is the dual variable on each cap constraint. The allocation problem
-    -- spread projected spend across cards to maximize reward, subject to caps
-    -- decomposes per cap constraint, so the optimum is a greedy fill and the
-    dual is exact. No LP solver required, and the arithmetic stays explainable.
-
-    For each cap: rank the categories it covers by *advantage*, the rate this
-    card pays over the best alternative. Fill headroom from the top. If
-    projected spend exhausts the headroom, the price is the advantage of the
-    marginal category -- the first one that does not fit. If headroom is never
-    exhausted it is not scarce, and the price is zero.
-    """
-    spend = state.get("spend_profile") or {}
-    prices = {}
-
-    for card_id, card in cards.items():
-        card_state = state["cards"].get(card_id)
-        if card_state is None:
-            continue
-
-        for key, cap, categories in cap_constraints(card):
-            headroom = max(0.0, cap - (card_state.get("cap_used") or {}).get(key, 0.0))
-            if headroom <= 0:
-                # Nothing left to protect; the reward term already drops to base.
-                prices[(card_id, key)] = 0.0
-                continue
-
-            claims = []
-            for category in categories:
-                category_spend = spend.get(category, 0.0)
-                advantage = effective_rate(card, category) - best_alternative_rate(
-                    cards, state, category, card_id, category_spend
-                )
-                if advantage > 0:
-                    claims.append((advantage, category_spend))
-            claims.sort(reverse=True)
-
-            filled = 0.0
-            price = 0.0
-            for advantage, category_spend in claims:
-                if filled + category_spend >= headroom:
-                    price = advantage
-                    break
-                filled += category_spend
-            prices[(card_id, key)] = price
-
-    return prices
-
-
 # --- scoring terms ---------------------------------------------------------
 
 
-def reward_term(card, card_state, amount, category):
-    """Cap-aware reward value in dollars.
+def reward_term(card, amount, category):
+    """Reward value in dollars: rate x amount, at this card's point value.
 
-    Dollars above the remaining cap headroom earn the base rate, not the bonus
-    rate. This split is the core of the engine.
+    No cap handling. Category caps are real -- a 6% card with $50 of headroom
+    left is not a 6% card -- but no API publishes cap sizes or usage, so
+    modelling them would mean inventing the numbers. Consequence to state
+    plainly: this figure is an upper bound for any capped card whose cap is
+    already spent.
     """
-    bonus_rate = card["rates"].get(category, card["base_rate"])
-    headroom = cap_headroom(card, card_state, category)
-
-    bonus_part = amount if headroom is None else min(amount, headroom)
-    rest = amount - bonus_part
-    reward = (bonus_part * bonus_rate + rest * card["base_rate"]) * card["point_value"]
-
+    rate = card["rates"].get(category, card["base_rate"])
     return {
-        "reward": reward,
-        "bonus_rate": bonus_rate,
-        "bonus_part": bonus_part,
-        "base_part": rest,
-        "cap_remaining": headroom,
+        "reward": amount * rate * card["point_value"],
+        "rate": rate,
+        "is_bonus_category": category in card["rates"],
     }
-
-
-def sub_term(card, card_state, amount):
-    """Sign-up bonus value earned by this purchase.
-
-    While a minimum-spend requirement is open, every dollar toward it is worth
-    far more than any category multiplier -- typically 15-25 cents, which
-    correctly swamps a 6% category bonus.
-    """
-    sub = card.get("sub")
-    if not sub:
-        return 0.0, 0.0
-    progress = card_state.get("sub_progress", 0.0)
-    if progress >= sub["min_spend"]:
-        return 0.0, 0.0
-    rate = sub["value"] / sub["min_spend"]
-    return amount * rate, rate
-
-
-def opportunity_term(card, card_id, category, bonus_part, prices):
-    """Cost of consuming scarce cap headroom that is worth more elsewhere.
-
-    Spending bonus-rate dollars today removes them from a pot that future
-    spend in other categories would have used. Charging that displaced value
-    against the purchase is what lets the engine decline a headline rate.
-    """
-    key = cap_key_for(card, category)
-    if key is None:
-        return 0.0, 0.0
-    price = prices.get((card_id, key), 0.0)
-    return bonus_part * price, price
-
-
-def protection_term(card, amount):
-    """Expected value of purchase protection, meaningful only on big tickets."""
-    if amount <= PROTECTION_MIN:
-        return 0.0
-    p = card.get("protection") or {}
-    return (
-        p.get("warranty_years", 0) * amount * WARRANTY_COEF
-        + bool(p.get("purchase_protection")) * amount * PURCHASE_COEF
-        + bool(p.get("price_protection")) * amount * PRICE_COEF
-    )
 
 
 def days_to_statement_close(card_state, today=None):
@@ -326,9 +157,9 @@ def risk_term(card_state, amount, state, today=None, card_id=None):
     """Dollar-denominated cost of the FICO damage this purchase would do.
 
     The differentiator: utilization is priced, not merely flagged, so the
-    engine can decline cash back to protect a score. Two components -- the
-    per-card step crossing, plus a weighted aggregate-utilization crossing,
-    because FICO looks at both.
+    engine can decline cash back to protect a score. Three inputs no rewards
+    app combines -- the per-card step crossing, the aggregate step crossing,
+    and how much a point is worth to this particular user.
     """
     limit = card_state.get("limit") or 0.0
     if limit <= 0:
@@ -344,9 +175,7 @@ def risk_term(card_state, amount, state, today=None, card_id=None):
         old_aggregate, AGGREGATE_FICO_STEPS
     )
 
-    sensitivity = score_sensitivity(
-        state.get("baseline_score", DEFAULT_BASELINE_SCORE)
-    )
+    sensitivity = score_sensitivity(state.get("baseline_score", DEFAULT_BASELINE_SCORE))
     penalty = (per_card + aggregate) * per_point * sensitivity
 
     if days_to_statement_close(card_state, today) > STATEMENT_FAR_DAYS:
@@ -385,40 +214,14 @@ def disqualify(card_state, amount, state):
 # --- explanation -----------------------------------------------------------
 
 
-def build_why(card, detail, amount):
+def build_why(detail, category):
     """One sentence naming the tradeoff. The client owns all other formatting."""
-    rate_pct = detail["bonus_rate"] * 100
-    base_pct = card["base_rate"] * 100
+    rate_pct = detail["rate"] * 100
 
-    if detail["bonus_part"] <= 0:
-        why = "%.3g%% flat" % base_pct
-    elif detail["base_part"] > 0:
-        why = "%.3g%% on the first $%.0f, then %.3g%% -- category cap is nearly spent" % (
-            rate_pct,
-            detail["bonus_part"],
-            base_pct,
-        )
-    elif detail["bonus_rate"] > card["base_rate"]:
-        why = "%.3g%% category rate" % rate_pct
+    if detail["is_bonus_category"]:
+        why = "%.3g%% on %s" % (rate_pct, category)
     else:
-        why = "%.3g%% flat, no cap" % base_pct
-
-    if detail.get("sub_rate", 0) > 0:
-        why += ", plus %.0f cents per dollar toward the sign-up bonus" % (
-            detail["sub_rate"] * 100
-        )
-
-    if detail.get("opportunity", 0) > 0.005:
-        why += " -- but that cap is worth %.0f cents more per dollar elsewhere, so it nets %.3g%%" % (
-            detail["headroom_price"] * 100,
-            (detail["bonus_rate"] - detail["headroom_price"]) * 100,
-        )
-
-    if detail.get("protection", 0) > 0.005:
-        why += "; %d-year extended warranty on a $%.0f purchase" % (
-            (card.get("protection") or {}).get("warranty_years", 0),
-            amount,
-        )
+        why = "%.3g%% flat" % rate_pct
 
     if detail.get("risk", 0) > 0.005:
         why += "; utilization damage costs $%.2f" % detail["risk"]
@@ -429,46 +232,27 @@ def build_why(card, detail, amount):
 # --- scoring ---------------------------------------------------------------
 
 
-def score_card(card_id, card, card_state, amount, category, state, prices, today=None):
+def score_card(card_id, card, card_state, amount, category, state, today=None):
     """Score one card in dollars, with every term broken out."""
-    detail = reward_term(card, card_state, amount, category)
-    sub_value, sub_rate = sub_term(card, card_state, amount)
-    opportunity, price = opportunity_term(
-        card, card_id, category, detail["bonus_part"], prices
-    )
-    protection = protection_term(card, amount)
+    detail = reward_term(card, amount, category)
     float_value = float_term(card_state, amount, today)
     risk = risk_term(card_state, amount, state, today, card_id)
 
-    reward = detail["reward"] + sub_value
-    score = reward + protection + float_value - opportunity - risk
-
-    detail.update(
-        {
-            "sub_value": sub_value,
-            "sub_rate": sub_rate,
-            "opportunity": opportunity,
-            "headroom_price": price,
-            "protection": protection,
-            "float": float_value,
-            "risk": risk,
-        }
-    )
+    detail.update({"float": float_value, "risk": risk})
+    score = detail["reward"] + float_value - risk
 
     return {
         "card": card_id,
         "card_name": card["name"],
         "score": score,
-        "reward_rate": detail["bonus_rate"],
-        "estimated_value": reward,
+        "reward_rate": detail["rate"],
+        "estimated_value": detail["reward"],
         "breakdown": {
-            "reward": reward,
-            "opportunity": -opportunity,
-            "protection": protection,
+            "reward": detail["reward"],
             "float": float_value,
             "risk": -risk,
         },
-        "why": build_why(card, detail, amount),
+        "why": build_why(detail, category),
         "detail": detail,
     }
 
@@ -479,7 +263,6 @@ def rank(state, category, amount, cards, today=None):
     Returns eligible cards sorted by score, plus the disqualified ones with
     their reasons so the UI can show what was skipped and why.
     """
-    prices = shadow_prices(cards, state)
     scored = []
     disqualified = []
 
@@ -494,7 +277,7 @@ def rank(state, category, amount, cards, today=None):
             )
             continue
         scored.append(
-            score_card(card_id, card, card_state, amount, category, state, prices, today)
+            score_card(card_id, card, card_state, amount, category, state, today)
         )
 
     scored.sort(key=lambda r: r["score"], reverse=True)

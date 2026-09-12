@@ -9,21 +9,6 @@ from datetime import date, timedelta
 
 from app.scoring import rewards
 
-# Projected remaining spend per category over the cap period. Shadow pricing
-# needs a forecast -- without one, cap headroom has no scarcity and the whole
-# term collapses to zero. M10's Nessie purchase-history aggregation replaces
-# these constants with real per-customer figures; until then they are the
-# documented demo profile.
-DEFAULT_SPEND_PROFILE = {
-    "groceries": 4200.0,
-    "dining": 3000.0,
-    "gas": 1500.0,
-    "drugstores": 600.0,
-    "travel": 2500.0,
-    "streaming": 300.0,
-    "other": 6000.0,
-}
-
 DEFAULT_DOLLARS_PER_FICO_POINT = 2.0
 # "Buying a house in 12 months" -- the engine will give up cash back to protect
 # the score at this exchange rate.
@@ -35,33 +20,9 @@ PROTECTION_MODE_DOLLARS_PER_FICO_POINT = 50.0
 DEFAULT_BASELINE_SCORE = 740.0
 
 
-def spend_profile_from_purchases(purchases):
-    """Aggregate Nessie purchase history into a forward spend forecast.
-
-    Nessie's history is short, so this extrapolates observed spend rather than
-    pretending to forecast. Falls back to the demo profile when history is too
-    thin to be meaningful.
-    """
-    if not purchases:
-        return dict(DEFAULT_SPEND_PROFILE)
-
-    totals = {}
-    for purchase in purchases:
-        category = purchase.get("category") or "other"
-        totals[category] = totals.get(category, 0.0) + float(purchase.get("amount", 0.0))
-
-    if not totals:
-        return dict(DEFAULT_SPEND_PROFILE)
-
-    profile = dict(DEFAULT_SPEND_PROFILE)
-    profile.update(totals)
-    return profile
-
-
 def build_wallet(
     accounts,
     catalog=None,
-    spend_profile=None,
     protection_mode=False,
     baseline_score=DEFAULT_BASELINE_SCORE,
 ):
@@ -124,10 +85,8 @@ def build_wallet(
             "linked_account_id": account.id,
             "balance": float(account.current_balance or 0.0),
             "limit": float(account.credit_limit or 0.0),
-            # Nessie has no cap-usage concept; these come from purchase history
-            # aggregation once M3 lands, and from committed purchases meanwhile.
-            "cap_used": dict(getattr(account, "cap_used", None) or {}),
-            "sub_progress": float(getattr(account, "sub_progress", 0.0) or 0.0),
+            # Neither of these comes from Nessie -- both are set locally per
+            # account. See the module docstring.
             "statement_close": getattr(account, "statement_close", None),
         }
 
@@ -139,7 +98,6 @@ def build_wallet(
         ),
         "protection_mode": protection_mode,
         "baseline_score": baseline_score,
-        "spend_profile": spend_profile or dict(DEFAULT_SPEND_PROFILE),
         "cards": card_states,
     }
     return cards, state, skipped
@@ -151,10 +109,9 @@ def build_wallet(
 def demo_wallet(today=None, protection_mode=False, baseline_score=DEFAULT_BASELINE_SCORE):
     """Seeded wallet used when no accounts are linked yet.
 
-    Deliberately rigged so the interesting cases are reachable: one card with
-    $50 of grocery cap left, one rotating card whose shared 5% pot is nearly
-    spent, one at 68% utilization, one with an open sign-up bonus.
-    Statement dates are relative to today so the demo never rots.
+    Deliberately rigged so the interesting cases are reachable: one card at
+    68% utilization, one just under a step threshold, and a spread of statement
+    dates. Dates are relative to today so the demo never rots.
     """
     today = today or date.today()
 
@@ -169,51 +126,35 @@ def demo_wallet(today=None, protection_mode=False, baseline_score=DEFAULT_BASELI
         ),
         "protection_mode": protection_mode,
         "baseline_score": baseline_score,
-        "spend_profile": dict(DEFAULT_SPEND_PROFILE),
         "cards": {
             "amex_bcp": {
                 "linked_account_id": 1,
                 "balance": 1240.00,
                 "limit": 5000.00,
-                "cap_used": {"groceries": 5950.00},
-                "sub_progress": 0.0,
                 "statement_close": close_in(16),
             },
             "citi_dc": {
                 "linked_account_id": 2,
                 "balance": 900.00,
                 "limit": 9000.00,
-                "cap_used": {},
-                "sub_progress": 0.0,
                 "statement_close": close_in(3),
             },
             "freedom_flex": {
                 "linked_account_id": 3,
                 "balance": 2040.00,
                 "limit": 3000.00,
-                "cap_used": {"rotating": 300.00},
-                "sub_progress": 0.0,
                 "statement_close": close_in(9),
             },
             "chase_sapphire_reserve": {
                 "linked_account_id": 4,
                 "balance": 1800.00,
                 "limit": 20000.00,
-                "cap_used": {},
-                "sub_progress": 0.0,
                 "statement_close": close_in(25),
             },
             "venture_x": {
                 "linked_account_id": 5,
                 "balance": 800.00,
                 "limit": 15000.00,
-                "cap_used": {},
-                # Bonus already earned. An *open* sign-up bonus is worth ~19
-                # cents per dollar, which correctly beats every other term on
-                # every purchase -- true, but it makes one card win every query
-                # and hides the rest of the engine. Set this to 800.0 to demo
-                # sign-up-bonus dominance as its own beat.
-                "sub_progress": 4000.00,
                 "statement_close": close_in(12),
             },
         },

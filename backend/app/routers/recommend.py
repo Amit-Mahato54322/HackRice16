@@ -57,8 +57,6 @@ def _card_payload(scored, state, amount):
         # --- added: the scoring detail behind the ranking ---
         "score": round(scored["score"], 2),
         "breakdown": {k: round(v, 2) for k, v in scored["breakdown"].items()},
-        "opportunity_cost": round(scored["detail"]["opportunity"], 2),
-        "headroom_price": round(scored["detail"]["headroom_price"], 4),
     }
 
 

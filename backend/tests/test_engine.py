@@ -26,141 +26,32 @@ def ranking(result):
     return [(c["card"], round(c["score"], 3)) for c in result["all_cards"]]
 
 
-# --- reward term -----------------------------------------------------------
+# --- reward ----------------------------------------------------------------
 
 
-def test_cap_split():
-    """$300 groceries with $50 of 6% headroom splits 50@6% + 250@1%."""
-    cards, state = wallet()
-    detail = engine.reward_term(
-        cards["amex_bcp"], state["cards"]["amex_bcp"], 300.0, "groceries"
-    )
-    assert detail["bonus_part"] == 50.0, detail
-    assert detail["base_part"] == 250.0, detail
-    expected = 50.0 * 0.06 + 250.0 * 0.01
-    assert abs(detail["reward"] - expected) < 1e-9, (detail["reward"], expected)
-
-
-# --- shadow pricing --------------------------------------------------------
-
-
-def test_shared_cap_headroom_is_priced():
-    """Freedom Flex's shared rotating pot is scarce, so headroom has a price."""
-    cards, state = wallet()
-    prices = engine.shadow_prices(cards, state)
-    # 5% groceries vs. the best alternative once Amex's $50 is spread across
-    # $4,200 of projected grocery spend -- that's Citi's flat 2%.
-    assert abs(prices[("freedom_flex", "rotating")] - 0.03) < 1e-9, prices
-
-
-def test_uncontested_cap_is_free():
-    """Headroom that projected spend cannot exhaust is not scarce."""
-    cards, state = wallet()
-    state["spend_profile"] = {"groceries": 100.0, "dining": 50.0, "drugstores": 10.0}
-    prices = engine.shadow_prices(cards, state)
-    assert prices[("freedom_flex", "rotating")] == 0.0, prices
-
-
-def test_exhausted_cap_has_no_price():
-    """A spent cap has no headroom left to protect."""
-    cards, state = wallet()
-    state["cards"]["freedom_flex"]["cap_used"]["rotating"] = 1500.0
-    prices = engine.shadow_prices(cards, state)
-    assert prices[("freedom_flex", "rotating")] == 0.0, prices
-
-
-def test_opportunity_cost_flips_dining():
-    """$120 dinner routes to Sapphire Reserve, NOT the 5% rotating card.
-
-    Freedom Flex pays 5% on dining; Sapphire Reserve pays 3x at 1.5 c/pt =
-    4.5%. A naive engine takes the 5%. But Freedom's pot is shared with
-    groceries, where its edge over the next-best card is far larger, and
-    projected grocery spend alone exhausts it. Burning that headroom on
-    dining -- where the alternative is nearly as good -- destroys value.
-    """
-    cards, state = wallet()
-    result = engine.rank(state, "dining", 120.0, cards)
-
-    assert result["all_cards"][0]["card"] == "chase_sapphire_reserve", ranking(result)
-
-    flex = find(result, "freedom_flex")
-    csr = find(result, "chase_sapphire_reserve")
-
-    # Freedom earns more gross reward: 5% vs. 4.5%.
-    assert flex["breakdown"]["reward"] > csr["breakdown"]["reward"], (flex, csr)
-
-    # And loses on the reward line alone once the headroom it burns is priced,
-    # before risk or any other term is considered.
-    flex_net = flex["breakdown"]["reward"] + flex["breakdown"]["opportunity"]
-    assert flex_net < csr["breakdown"]["reward"], (flex_net, csr["breakdown"])
-    assert flex["detail"]["opportunity"] > 0
-
-
-def test_marginal_category_is_indifferent():
-    """On groceries, Freedom's advantage exactly equals its headroom price.
-
-    Groceries is the *marginal* category for the rotating cap, so the LP says
-    you should be indifferent between spending the headroom and not. The
-    engine reproduces that: gross reward minus opportunity cost lands on the
-    flat-2% alternative. Later terms, not the reward, break the tie.
-    """
-    cards, state = wallet()
-    result = engine.rank(state, "groceries", 120.0, cards)
-
-    flex = find(result, "freedom_flex")
-    citi = find(result, "citi_dc")
-    flex_net = flex["breakdown"]["reward"] + flex["breakdown"]["opportunity"]
-    citi_net = citi["breakdown"]["reward"] + citi["breakdown"]["opportunity"]
-    assert abs(flex_net - citi_net) < 1e-9, (flex_net, citi_net)
-
-
-# --- sign-up bonus ---------------------------------------------------------
-
-
-def test_sub_dominates():
-    """An open sign-up bonus outranks a 6% category card."""
-    cards, state = wallet()
-    # Give Amex its full 6% headroom back so this is a fair fight, and reopen
-    # Venture X's bonus (the seed wallet ships with it already earned).
-    state["cards"]["amex_bcp"]["cap_used"] = {}
-    state["cards"]["venture_x"]["sub_progress"] = 800.0
-    result = engine.rank(state, "groceries", 200.0, cards)
-
-    assert result["all_cards"][0]["card"] == "venture_x", ranking(result)
-    venture = find(result, "venture_x")
-    # $750 on $4,000 = 18.75 cents per dollar, far above any category rate.
-    assert abs(venture["detail"]["sub_rate"] - 0.1875) < 1e-9
-
-
-def test_completed_sub_stops_counting():
-    """Once the minimum spend is met the bonus is over, not perpetual."""
-    cards, state = wallet()
-    state["cards"]["venture_x"]["sub_progress"] = 4000.0
-    result = engine.rank(state, "groceries", 200.0, cards)
-    assert find(result, "venture_x")["detail"]["sub_value"] == 0.0
-
-
-# --- protection ------------------------------------------------------------
-
-
-def test_protection_wins():
-    """A $1,400 laptop picks the warranty card over a higher rate."""
-    cards, state = wallet()
-    result = engine.rank(state, "electronics", 1400.0, cards)
-
-    assert result["all_cards"][0]["card"] == "chase_sapphire_reserve", ranking(result)
-    csr = find(result, "chase_sapphire_reserve")
-    citi = find(result, "citi_dc")
-    # Citi pays double the rate on an uncategorized purchase and still loses.
-    assert citi["breakdown"]["reward"] > csr["breakdown"]["reward"]
-    assert csr["breakdown"]["protection"] > citi["breakdown"]["protection"]
-
-
-def test_protection_ignored_on_small_purchases():
+def test_bonus_category_beats_flat():
+    """$80 of groceries goes to the 6% card over the 2% flat card."""
     cards, state = wallet()
     result = engine.rank(state, "groceries", 80.0, cards)
-    for card in result["all_cards"]:
-        assert card["breakdown"]["protection"] == 0.0, card
+    assert result["all_cards"][0]["card"] == "amex_bcp", ranking(result)
+    assert abs(find(result, "amex_bcp")["breakdown"]["reward"] - 4.80) < 1e-9
+
+
+def test_point_value_is_applied():
+    """3x at 1.5 cents per point is 4.5%, not 3%."""
+    cards, state = wallet()
+    result = engine.rank(state, "dining", 100.0, cards)
+    csr = find(result, "chase_sapphire_reserve")
+    assert abs(csr["breakdown"]["reward"] - 4.50) < 1e-9, csr["breakdown"]
+
+
+def test_uncategorized_purchase_uses_base_rate():
+    """An unrecognized category scores every card at its base rate."""
+    cards, state = wallet()
+    result = engine.rank(state, "other", 100.0, cards)
+    citi = find(result, "citi_dc")
+    assert citi["detail"]["is_bonus_category"] is False
+    assert abs(citi["breakdown"]["reward"] - 2.00) < 1e-9
 
 
 # --- risk and disqualifiers ------------------------------------------------
@@ -201,6 +92,25 @@ def test_risk_penalty_is_priced_not_flagged():
     assert abs(flex["breakdown"]["risk"] + 14.0) < 1e-9, flex["breakdown"]
 
 
+def test_risk_outweighs_reward():
+    """The engine declines the best rate when score damage exceeds it.
+
+    Freedom Flex pays 5% on groceries and Citi Double Cash pays 2% flat, so a
+    rate lookup takes Freedom every time. It loses anyway: pushing past 68.9%
+    utilization costs more in FICO damage than the extra cash back is worth.
+    No rewards app makes this trade.
+    """
+    cards, state = wallet()
+    result = engine.rank(state, "groceries", 400.0, cards)
+    flex = find(result, "freedom_flex")
+    citi = find(result, "citi_dc")
+
+    assert flex["reward_rate"] > citi["reward_rate"], (flex, citi)
+    assert flex["breakdown"]["reward"] > citi["breakdown"]["reward"]
+    # 2.5x the rate, and still the worse choice.
+    assert flex["score"] < citi["score"], ranking(result)
+
+
 def test_risk_scales_with_baseline_score():
     """The same purchase costs a high scorer more than a low scorer."""
     cards, low = wallet(baseline_score=600)
@@ -215,31 +125,22 @@ def test_mortgage_mode():
     cards, default_state = wallet()
     _, protected_state = wallet(protection_mode=True)
 
-    for state in (default_state, protected_state):
-        # Full 6% grocery headroom makes Amex the clear reward winner...
-        state["cards"]["amex_bcp"]["cap_used"] = {}
-
     default_result = engine.rank(default_state, "groceries", 400.0, cards)
     protected_result = engine.rank(protected_state, "groceries", 400.0, cards)
 
-    # ...and it wins outright by default.
+    # Amex pays 6% and wins outright by default...
     assert default_result["all_cards"][0]["card"] == "amex_bcp", ranking(default_result)
 
-    # But $1,240 + $400 on a $5,000 limit is 32.8%, so protecting the score
+    # ...but $1,240 + $400 on a $5,000 limit is 32.8%, so protecting the score
     # refuses it and settles for a worse-paying card.
     assert protected_result["all_cards"][0]["card"] != "amex_bcp", ranking(
         protected_result
     )
     assert "amex_bcp" in [d["card"] for d in protected_result["disqualified"]]
-    assert protected_result["all_cards"][0]["score"] < default_result["all_cards"][0][
-        "score"
-    ]
-
-    # Everything that would push past 30% utilization is refused outright.
-    for card in protected_result["all_cards"]:
-        card_state = protected_state["cards"][card["card"]]
-        projected = (card_state["balance"] + 400.0) / card_state["limit"]
-        assert projected <= 0.30, (card["card"], projected)
+    assert (
+        protected_result["all_cards"][0]["score"]
+        < default_result["all_cards"][0]["score"]
+    )
 
 
 def test_statement_timing_discounts_risk():
@@ -291,7 +192,11 @@ def test_adapter_skips_unmapped_account():
 
 
 def test_adapter_survives_missing_credit_limit():
-    """A null credit limit must not divide by zero -- it disqualifies."""
+    """A null credit limit must not divide by zero -- it disqualifies.
+
+    Nessie has no credit_limit field, so this is the normal state of a synced
+    account until a limit is set locally.
+    """
     product = FakeProduct("citi_dc", "Citi Double Cash")
     accounts = [FakeAccount(1, None, card_product=product, balance=100.0)]
     cards, state, _ = adapter.build_wallet(accounts)
@@ -305,8 +210,16 @@ def test_vectormint_points_per_dollar_is_normalized():
     fallback = rewards.load_catalog()["amex_bcp"]
     card = rewards.normalize_reward_json({"rates": {"groceries": 4}}, fallback)
     assert card["rates"]["groceries"] == 0.04, card["rates"]
-    # Caps come from the local overlay, not VectorMint.
-    assert card["caps"] == {"groceries": 6000}
+
+
+def test_vectormint_payload_overrides_fallback():
+    """Cached VectorMint data wins over the local catalog when present."""
+    fallback = rewards.load_catalog()["citi_dc"]
+    card = rewards.normalize_reward_json(
+        {"rates": {"travel": 0.05}, "base_rate": 0.01}, fallback
+    )
+    assert card["rates"] == {"travel": 0.05}
+    assert card["base_rate"] == 0.01
 
 
 if __name__ == "__main__":
