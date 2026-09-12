@@ -13,7 +13,7 @@ export const cards: DemoCard[] = [
     limit: 3146,
     balance: 646,
     reward: "cashback",
-    color: "#633440",
+    color: "#355C44",
   },
   {
     id: "travel",
@@ -22,7 +22,7 @@ export const cards: DemoCard[] = [
     limit: 2000,
     balance: 400,
     reward: "points",
-    color: "#49353F",
+    color: "#3D5245",
   },
   ...[
     "Green Rewards",
@@ -39,7 +39,7 @@ export const cards: DemoCard[] = [
     limit: 600,
     balance: 100,
     reward: "cashback",
-    color: "#523D49",
+    color: "#405D4B",
   })),
   {
     id: "reserve",
@@ -48,7 +48,7 @@ export const cards: DemoCard[] = [
     limit: 654,
     balance: 54,
     reward: "cashback",
-    color: "#45343D",
+    color: "#354B3D",
   },
 ];
 export const comparisonCards = cards.slice(0, 2);
