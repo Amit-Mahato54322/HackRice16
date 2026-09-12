@@ -218,11 +218,13 @@ def transcribe(audio_bytes: bytes, mime_type: str) -> str | None:
             text = body["candidates"][0]["content"]["parts"][0]["text"].strip()
             # The model occasionally prefixes a bare meta-label ("thought",
             # "transcript:") despite the instruction not to -- seen
-            # intermittently at temperature 0. Strip a first line that's only
-            # that kind of label, never real speech.
-            first_line, _, rest = text.partition("\n")
-            if rest and re.fullmatch(r"(thought|transcript)s?:?", first_line.strip(), re.IGNORECASE):
-                text = rest.strip()
+            # intermittently at temperature 0, both as its own line ("Thought\n
+            # ...") and inline ("Thought: ..."). Strip it either way; a
+            # response that's *only* the label (nothing real said) collapses
+            # to an empty string, which `or None` below treats as "no speech."
+            text = re.sub(
+                r"^\s*(thought|transcript)s?:?\s*\n?\s*", "", text, flags=re.IGNORECASE
+            ).strip()
             return text or None
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc

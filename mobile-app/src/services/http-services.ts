@@ -17,6 +17,13 @@ const BASE_URL = (
 ).replace(/\/$/, "");
 
 const REQUEST_TIMEOUT_MS = 15_000;
+// /conversation and /conversation/voice can chain up to three sequential
+// Gemini calls server-side (transcribe, translate, and a second translate
+// after a purchase patch -- see backend/app/routers/conversation.py), each
+// with its own multi-attempt retry budget. The flat 15s default was tuned
+// for single-call endpoints and cuts these off before the backend is done,
+// showing a false "failed" while it's still working.
+const CONVERSATION_TIMEOUT_MS = 45_000;
 
 // The backend has no colour concept -- it returns reward data, not brand
 // styling. Assigned here by position so a card keeps the same colour between
@@ -46,11 +53,12 @@ async function request<T>(
   path: string,
   signal: AbortSignal,
   init?: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   // Fail fast rather than hang: a phone pointed at an unreachable laptop
   // otherwise spins until the user gives up.
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => timeout.abort(), timeoutMs);
   const abort = () => timeout.abort();
   signal.addEventListener("abort", abort, { once: true });
 
@@ -360,6 +368,7 @@ export function createHttpServices(
               },
             }),
           },
+          CONVERSATION_TIMEOUT_MS,
         );
         return {
           reply: body.reply,
@@ -398,6 +407,7 @@ export function createHttpServices(
           "/conversation/voice",
           signal,
           { method: "POST", body: form },
+          CONVERSATION_TIMEOUT_MS,
         );
         return {
           reply: body.reply,

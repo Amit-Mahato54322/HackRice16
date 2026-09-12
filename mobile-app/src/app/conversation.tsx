@@ -61,6 +61,20 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const wave = useRef(new Animated.Value(0)).current;
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  // Guards the async gap between tapping the mic and the recorder actually
+  // starting, so a fast double-tap can't call recorder.record() twice.
+  const startingRecording = useRef(false);
+
+  // Leaving mid-recording (back navigation, a message sent instead, "Compare
+  // my cards" tapped while listening) must stop the native mic session, not
+  // just the `listening` flag -- otherwise it keeps capturing in the
+  // background after the screen's moved on.
+  const abandonRecording = useCallback(() => {
+    setListening((was) => {
+      if (was) void recorder.stop().catch(() => {});
+      return false;
+    });
+  }, [recorder]);
 
   useFocusEffect(
     useCallback(() => {
@@ -71,9 +85,9 @@ export default function ConversationScreen() {
         messageRequest.current?.abort();
         playbackRequest.current?.abort();
         void services.playback.stop().catch(() => {});
-        setListening(false);
+        abandonRecording();
       };
-    }, [services]),
+    }, [services, abandonRecording]),
   );
   useEffect(() => {
     request.current?.abort();
@@ -86,8 +100,8 @@ export default function ConversationScreen() {
     setError("");
     setLoading(false);
     setSending(false);
-    setListening(false);
-  }, [flowId, typing, services]);
+    abandonRecording();
+  }, [flowId, typing, services, abandonRecording]);
   useEffect(() => {
     if (typing !== "1") return;
     const focus = setTimeout(() => composer.current?.focus(), 350);
@@ -156,7 +170,7 @@ export default function ConversationScreen() {
     const pending = new AbortController();
     messageRequest.current = pending;
     setSending(true);
-    setListening(false);
+    abandonRecording();
     try {
       const turn = await services.conversation.sendText(
         message.trim(),
@@ -243,22 +257,28 @@ export default function ConversationScreen() {
       return;
     }
 
-    Keyboard.dismiss();
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      setReply("Microphone access is needed to record. You can type instead.");
-      return;
+    if (startingRecording.current) return; // already starting; ignore the double-tap
+    startingRecording.current = true;
+    try {
+      Keyboard.dismiss();
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setReply("Microphone access is needed to record. You can type instead.");
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setReply("");
+      setListening(true);
+    } finally {
+      startingRecording.current = false;
     }
-    await setAudioModeAsync({ allowsRecording: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    setReply("");
-    setListening(true);
   }
   async function compare() {
     if (loading) return;
     Keyboard.dismiss();
-    setListening(false);
+    abandonRecording();
     setLoading(true);
     request.current?.abort();
     const pending = new AbortController();
@@ -526,14 +546,7 @@ export default function ConversationScreen() {
               returnKeyType="send"
               maxLength={200}
               style={styles.composerInput}
-              onFocus={() => {
-                // Typing while recording abandons the clip rather than
-                // leaving the recorder running unattended in the background.
-                if (listening) {
-                  setListening(false);
-                  void recorder.stop();
-                }
-              }}
+              onFocus={abandonRecording}
             />
             {message.trim() ? (
               <IconButton
