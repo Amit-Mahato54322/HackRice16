@@ -10,7 +10,7 @@ Someone standing in a store with several credit cards doesn't know which one ear
 4. Dashboard shows connected cards, balances, credit limit, and utilization %.
 5. User taps the voice button and speaks a purchase description, e.g. "I'm buying groceries at Whole Foods, around $90."
 6. Audio is uploaded to the backend, sent to Gemini (audio in, structured JSON out) → `{merchant, amount, category}`. The merchant name is also cross-referenced against the Nessie merchant catalog for category validation. No clarifying follow-up questions in v1 — single shot only.
-7. Backend scores every eligible (credit) card using its VectorMint reward rate for that category × amount, plus the utilization impact of the purchase on that card.
+7. Backend scores every eligible (credit) card in dollars: `reward` (a rate lookup × amount) minus `risk` (the dollar cost of the FICO damage this purchase's utilization would cause, priced per-card and wallet-wide, scaled to the user's credit profile) — see §7.
 8. The top recommendation is turned into a natural-language response, sent to ElevenLabs TTS, and the returned audio plays on the phone; the dashboard simultaneously highlights the winning card with its reward value and utilization callout (e.g. "Use Amex Gold. 4x points on groceries, ~$3.60 value. Utilization would be 22%, below your 30% threshold.").
 9. User can tap "Why?" to see every eligible card ranked, each with its estimated value and utilization impact.
 
@@ -56,7 +56,10 @@ A `linked_accounts` row with `card_product_id = null` means "synced from Nessie 
 - `GET /cards/search?q=` — search the VectorMint catalog, backs the card-mapping picker
 - `POST /cards/map` — map a `linked_account` to a `card_product`; fetches + caches VectorMint reward data at this moment (not fetched again per recommendation); no credit_limit input — already seeded
 - `GET /dashboard` — returns cards, balances, utilization for the signed-in user
-- `POST /recommend` — multipart audio upload; runs the full pipeline (Gemini extraction + Nessie merchant lookup → scoring → ElevenLabs audio); returns the audio + the full ranked breakdown as JSON for the "Why" screen
+- `POST /recommend` — body `{merchant, amount, category?}` (multipart audio + Gemini extraction lands in M6; until then the caller sends merchant/amount directly); runs the scoring engine against the caller's real wallet, falling back to the seeded demo wallet if nothing's mapped to a card product yet, then ElevenLabs; returns the audio + the full ranked breakdown as JSON for the "Why" screen
+- `GET /cards/limits` — every user-entered credit limit so far, keyed by card
+- `PUT /cards/{card}/limit` — enter or update one card's credit limit by hand (no API in the stack publishes this field)
+- `DELETE /cards/{card}/limit` — forget an entered limit; the card is then excluded from scoring rather than guessed
 
 ## 6. Nessie Integration Details
 
@@ -87,21 +90,29 @@ Store `NESSIE_CUSTOMER_ID` in `.env` after the seed script runs.
 
 ## 7. Scoring Formula (v1)
 
-For each eligible (credit, mapped) card the user owns:
+Every eligible card is scored in dollars (`backend/app/scoring/engine.py`):
 
-- `reward_rate` = cached VectorMint rate for (card, category); fall back to the card's general/base rate if no category-specific rate exists for that card
-- `estimated_value` = `reward_rate × amount` (confirm VectorMint's point-to-dollar convention once in their docs/playground — if they express rates as points-per-dollar rather than %, adjust the multiplier accordingly; this is an open item, see §9)
-- `projected_utilization` = `(current_balance + amount) / credit_limit`
-- `utilization_flag` = true if `projected_utilization` crosses a fixed 30% threshold (hardcoded constant for v1, no per-user setting)
-- Sort all eligible cards by `estimated_value` descending. The top card is the spoken/displayed recommendation. The full sorted list (value + utilization_flag per card) backs the "Why" screen.
+```
+score = reward - risk
+```
 
-### Edge cases to handle
-- **Unrecognized category** (Gemini can't classify the merchant) → default to `"other"`, score using each card's general/base reward rate instead of a category-specific one.
-- **Card with no cached VectorMint data** (user skipped mapping it) → excluded from scoring entirely, shown on the dashboard as "not yet configured," not silently included with a wrong rate.
-- **Every eligible card would cross the utilization threshold** → still recommend the highest-value card, but visibly show the flag rather than hiding the risk — never suppress it just because it's universal.
-- **Gemini returns no amount** (user didn't say one) → treat amount as null, skip the utilization-impact calculation for this query, but still rank cards by `reward_rate` alone.
-- **No eligible cards at all** (nothing mapped yet) → dashboard/voice response should say so plainly and prompt the user to map a card, not fail silently.
-- **Nessie merchant match found** → use Nessie's merchant category to validate or override Gemini's category guess before scoring.
+- **`reward`** = a straight rate lookup: `rate(card, category) × amount × point_value`. Category caps, sign-up bonuses, and purchase-protection value are deliberately absent — no API in the stack publishes cap usage, offer terms, or claim rates, so modelling them would mean scoring on invented numbers instead of data.
+- **`risk`** = the dollar cost of the FICO damage this purchase's utilization would cause — a step function (not a smooth curve), applied both per-card and to aggregate (whole-wallet) utilization, scaled by the user's baseline credit score (a ~790 profile is charged roughly 3x what a ~600 profile is for the same utilization jump). This is the actual differentiator: utilization is *priced*, not merely flagged, so the engine can decline a higher cash-back rate to protect a score — a trade no plain rewards-lookup app makes.
+- **Disqualifiers** (checked before scoring, not scored around): no credit limit on record (nothing to divide by), or the purchase would push the card past 95% of its limit (likely declined at the terminal). Both return a reason string rather than silently dropping the card.
+- Sort all eligible cards by `score` descending. The top card is the spoken/displayed recommendation; disqualified cards are still returned with their reason so the UI can show what was skipped and why.
+
+### Data sources — and what's deliberately excluded
+- `reward` rates come from a small hand-entered local catalog (`backend/app/scoring/card_db.json`). A VectorMint-shaped cache path exists (`CardProduct.cached_reward_json`, normalized in `app/scoring/rewards.py`) for the moment `/cards/map` actually calls VectorMint — nothing does yet, so the local catalog is the only reward-rate source populated today (see §9).
+- `credit_limit` is published by no API in the stack — Nessie's account object has no such field (confirmed by a live probe, `backend/tests/test_nessie.py`). It's entered by hand: once at seed time (`scripts/seed_nessie.py`) or per-card via `PUT /cards/{card}/limit`. A card with no limit on record is disqualified, never guessed.
+- Category caps, sign-up bonus tracking, purchase protection, and statement-timing float are all explicitly out of the v1 model for the same reason as `credit_limit`: modelling them would mean inventing cap-usage, claim-probability, or billing-cycle figures no source publishes.
+
+### Edge cases handled
+- **Unrecognized merchant** (`app/scoring/categorize.py`) → category defaults to `"other"`; every card scores at its base rate rather than guessing a bonus category.
+- **Nessie's own merchant category is available** → it wins over the free-text keyword match, since it's authoritative for the demo data.
+- **No credit limit on record** → disqualified with that reason, never defaulted to zero or guessed.
+- **Purchase would exceed 95% of a card's limit** → disqualified (likely declined at the terminal), not merely penalized by the risk term.
+- **Every eligible card disqualified** → an empty recommendation is still returned, with every disqualification reason attached, so the UI can say plainly that nothing can absorb this purchase rather than failing silently.
+- **Nothing mapped to a real card product yet** (M4 not done) → `/recommend` falls back to a seeded demo wallet so the engine still runs on real logic instead of returning canned data.
 
 ## 8. Milestones
 
@@ -126,22 +137,22 @@ Backend and frontend are meant to run as parallel workstreams, not a relay race.
 - Backend (~75 min): VectorMint client wrapper (search, fetch reward data); `GET /cards/search?q=` proxies the catalog; `POST /cards/map` links a `linked_account` to a `card_product` and caches the reward JSON. Credit limit is already in the DB from the seed script — no user input. Done when mapping a seeded account persists a `card_product` row and `/dashboard` shows it as "configured" with utilization fully computed.
 - Frontend (~15 min): swap the card-mapping picker's mock search results for `GET /cards/search`; wire the confirm button to `POST /cards/map`. No extra input fields — credit_limit, used, and remaining are all pre-populated from seed data.
 
-**M5 — Scoring engine** (~1h, backend-only — no frontend task, nothing to block)
-- Backend: pure function `score_cards(cards, category, amount)` — reward_rate × amount, projected utilization, utilization_flag; unit-tested standalone with hardcoded inputs, no HTTP, no DB. Done when 3–4 hand-written cases (clear winner, tie, utilization-flagged card, unmapped card excluded) all pass.
+**M5 — Scoring engine** ✅ **DONE** (backend-only — no frontend task, nothing to block)
+- Backend: `score = reward - risk` in `backend/app/scoring/engine.py` — `reward` is a rate lookup, `risk` prices FICO-step utilization damage (per-card + aggregate, scaled by the user's baseline credit score); disqualifiers for no-credit-limit-on-record and >95%-of-limit. 11 hand-written cases in `backend/tests/test_engine.py`, all passing (`python backend/tests/test_engine.py`), no HTTP, no DB.
 
 ### Day 2 — voice layer + polish
 
 **M6 — Voice capture + extraction** (~1.5h)
-- Backend (~75 min): `POST /recommend` accepts multipart audio; calls Gemini → `{merchant, amount, category}`; cross-references the Nessie merchant catalog for category validation; returns the extraction result only (no scoring yet), extending — not replacing — the M1 contract. Done when three real recorded test phrases each extract correctly.
-- Frontend (~15 min; the recording UI itself can be built with `expo-av` immediately after M1 against a hardcoded fixture, so only the final network call is blocked on backend): record button; upload to `/recommend`; display extracted merchant/category/amount.
+- Backend (~75 min): Gemini client wrapper (`app/services/gemini.py`) — one call, audio bytes in, a structured JSON schema out (`{merchant, amount, category}`); no separate STT step. `POST /recommend` accepts multipart audio, calls it, cross-references the Nessie merchant catalog for category validation, then feeds the result into the M7 engine path already built — this is the piece that finally makes M7's `{merchant, amount, category}` body real instead of caller-supplied. Done when three real recorded test phrases each extract correctly and produce a real ranking.
+- Frontend (~15 min; the recording UI itself can be built with `expo-audio` immediately after M1 against a hardcoded fixture, so only the final network call is blocked on backend — `expo-av` is superseded by `expo-audio` in this SDK, see AGENTS.md): record button; upload to `/recommend`; display extracted merchant/category/amount.
 
-**M7 — Full recommend pipeline** (~45 min)
-- Backend: wire M5's scoring engine into `/recommend` — runs after extraction, returns the ranked card list + recommendation text. Done when a live voice clip produces a ranked list matching the M1 "Why" screen contract.
-- Frontend: none new — Voice/Why screens are already built against the contract; this just makes the data real.
+**M7 — Full recommend pipeline** ✅ **DONE** (interim: JSON body, not voice yet)
+- Backend: `POST /recommend` now takes `{merchant, amount, category?}`, builds the caller's real wallet (`app/scoring/adapter.py`) — or falls back to a seeded demo wallet if nothing's mapped to a card product yet (M4) — and ranks it with the M5 engine. The multipart-audio + Gemini-extraction version of this same endpoint is M6's job; this delivers the scoring half of the pipeline ahead of the voice half.
+- Frontend: none new — the response contract is unchanged; wiring `mobile-app` to actually call this instead of its mocks is separate, still-outstanding work.
 
-**M8 — ElevenLabs TTS** (~45 min)
-- Backend: `/recommend` calls ElevenLabs with the recommendation text, returns audio bytes alongside the JSON. Done when the returned audio plays back correctly and matches the spoken `why` string.
-- Frontend (~15 min, buildable in parallel against any static test MP3 well before backend ships real audio): Voice screen plays the returned audio automatically via `expo-av`.
+**M8 — ElevenLabs TTS** ✅ **DONE**
+- Backend: `/recommend`'s `voice` field calls ElevenLabs with the top card's real `why` string, returns `{ transcript, audio: { url, mimeType } }` (matching `mobile-app/src/services/contracts.ts`'s `VoiceOutput` directly); falls back to placeholder audio if `ELEVENLABS_API_KEY` is unset or the call fails.
+- Frontend (`mobile-app/src/services/device-playback.ts`): plays the backend's audio URL via `expo-audio` when present, falls back to on-device `expo-speech` of the transcript otherwise. Not exercised in the app yet — `mobile-app` still runs entirely on `mock-services.ts` (see Open Items).
 
 **M9 — Polish** (~1.5h, frontend-only — no backend dependency)
 - Frontend: Dashboard utilization bars, highlight winning card, Why screen ranked breakdown with value + utilization flag, Nessie transaction history on card detail.
@@ -154,6 +165,8 @@ Backend and frontend are meant to run as parallel workstreams, not a relay race.
 - Full end-to-end run-throughs
 - Devpost write-up + required demo video
 
-## 9. Open items to confirm once you're in VectorMint's docs/playground
-- Exact convention their reward-rate fields use (flat %, points-per-dollar, or something else) so `estimated_value` is computed correctly — adjust the formula in §7 once confirmed.
-- Whether their 250-card catalog includes your specific 5 real cards, or if any need to be entered as a manual fallback (their docs mention provenance/change-history tracking, so coverage is likely good, but worth a quick check on your actual 5 before Day 1 is over).
+## 9. Open items
+- VectorMint is not called live anywhere yet. `app/scoring/rewards.py` can normalize a cached VectorMint payload the moment `/cards/map` actually fetches one, but until then `card_db.json`'s local catalog is the only reward-rate source. Decide whether M4 wires a real VectorMint call, or the local catalog just stays the permanent source for the demo's cards.
+- `/cards/search` and `/cards/map` are still M1 stubs returning fixed mock JSON — that's M4. Until it's built, `/recommend` runs on the seeded demo wallet for any account that isn't wired up by hand like `scripts/seed_nessie.py`'s three.
+- `mobile-app` has no live backend adapter yet — `src/services/index.ts` still wires up `mock-services.ts` unconditionally, so none of M3/M7/M8's real backend work is reachable from the app. Someone needs to implement `CreditPickServices` against the real HTTP endpoints (see `mobile-app/ARCHITECTURE.md`, "Backend integration") and switch `index.ts` to it.
+- `backend/tests/test_nessie.py` has a real Nessie API key committed in plaintext — rotate it on Nessie's dashboard (see CLAUDE.md Current Status).
