@@ -379,7 +379,7 @@ def _reply(db: Session, message: str, purchase: PurchaseIn, history: list[dict])
         # false-by-now sentence.
         translated = gemini.translate(message, context, history)
 
-    reply = _answer(request.message, context)
+    reply = _answer(message, context)
     grounded = False
 
     if translated and translated.get("reply"):
