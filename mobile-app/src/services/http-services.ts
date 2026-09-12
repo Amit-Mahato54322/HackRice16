@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { money } from "../domain/models.ts";
 import type { Category, Purchase } from "../domain/models";
 import { cardArt } from "../components/card-art";
@@ -5,6 +6,7 @@ import type {
   CardOption,
   CreditPickServices,
   Recommendation,
+  VoiceOutput,
   WalletCard,
   WalletSnapshot,
 } from "./contracts";
@@ -16,6 +18,13 @@ const BASE_URL = (
 ).replace(/\/$/, "");
 
 const REQUEST_TIMEOUT_MS = 15_000;
+// /conversation and /conversation/voice can chain up to three sequential
+// Gemini calls server-side (transcribe, translate, and a second translate
+// after a purchase patch -- see backend/app/routers/conversation.py), each
+// with its own multi-attempt retry budget. The flat 15s default was tuned
+// for single-call endpoints and cuts these off before the backend is done,
+// showing a false "failed" while it's still working.
+const CONVERSATION_TIMEOUT_MS = 45_000;
 
 /** Frontend categories are display strings; the engine's are lowercase keys. */
 const TO_ENGINE: Record<Category, string> = {
@@ -40,23 +49,48 @@ async function request<T>(
   path: string,
   signal: AbortSignal,
   init?: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   // Fail fast rather than hang: a phone pointed at an unreachable laptop
   // otherwise spins until the user gives up.
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => timeout.abort(), timeoutMs);
   const abort = () => timeout.abort();
   signal.addEventListener("abort", abort, { once: true });
 
   try {
+    // FormData (voice upload) must not get a manual Content-Type -- fetch
+    // sets its own multipart boundary, which a fixed header would break.
+    const isFormData = init?.body instanceof FormData;
     const response = await fetch(`${BASE_URL}${path}`, {
       ...init,
       signal: timeout.signal,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: isFormData
+        ? init?.headers
+        : { "Content-Type": "application/json", ...init?.headers },
     });
     if (!response.ok) {
+      // A raised HTTPException gives {"detail": "..."}; FastAPI's own request
+      // validation (missing/malformed field) gives {"detail": [{loc, msg}]}
+      // instead -- surface either rather than a bare status code, which told
+      // us nothing about what actually failed.
+      const reason = await response
+        .json()
+        .then((body) => {
+          if (typeof body?.detail === "string") return body.detail;
+          if (Array.isArray(body?.detail)) {
+            return body.detail
+              .map((e: { loc?: unknown[]; msg?: string }) =>
+                e.msg ? `${e.loc?.join(".") ?? "field"}: ${e.msg}` : null,
+              )
+              .filter(Boolean)
+              .join("; ");
+          }
+          return undefined;
+        })
+        .catch(() => undefined);
       throw new Error(
-        `${init?.method ?? "GET"} ${path} failed: ${response.status}`,
+        reason || `${init?.method ?? "GET"} ${path} failed: ${response.status}`,
       );
     }
     return (await response.json()) as T;
@@ -106,7 +140,31 @@ type RecommendResponse = {
   voice: { transcript: string; audio?: { url: string; mimeType: string } };
 };
 
+type ConversationResponse = {
+  reply: string;
+  purchasePatch?: { store?: string; amount?: number } | null;
+  voice?: { transcript: string; audio?: { url: string; mimeType: string } };
+  // Only /conversation/voice sets this: what Gemini heard the user say.
+  transcript?: string;
+};
+
 // --- mapping ----------------------------------------------------------------
+
+/** The backend serves clips from /static, relative to the API host; expo-audio
+ * needs an absolute URL. Shared by /recommend and /conversation's voice. */
+function toAbsoluteVoice(voice: VoiceOutput): VoiceOutput {
+  return {
+    ...voice,
+    audio: voice.audio
+      ? {
+          ...voice.audio,
+          url: voice.audio.url.startsWith("http")
+            ? voice.audio.url
+            : `${BASE_URL}${voice.audio.url}`,
+        }
+      : undefined,
+  };
+}
 
 function toWalletCard(card: DashboardCard, index: number): WalletCard {
   const limit = card.credit_limit || 0;
@@ -238,19 +296,7 @@ function toRecommendation(
           : undefined,
       },
     ],
-    voice: {
-      ...body.voice,
-      // The backend serves clips from /static, relative to the API host.
-      // expo-audio needs an absolute URL.
-      audio: body.voice.audio
-        ? {
-            ...body.voice.audio,
-            url: body.voice.audio.url.startsWith("http")
-              ? body.voice.audio.url
-              : `${BASE_URL}${body.voice.audio.url}`,
-          }
-        : undefined,
-    },
+    voice: toAbsoluteVoice(body.voice),
   };
 }
 
@@ -314,23 +360,66 @@ export function createHttpServices(
       // figure the engine did not compute is rejected server-side, so a reply
       // is either grounded or plainer -- never invented.
       async sendText(text, purchase, signal) {
-        const body = await request<{
-          reply: string;
-          purchasePatch?: { store?: string; amount?: number } | null;
-        }>("/conversation", signal, {
-          method: "POST",
-          body: JSON.stringify({
-            message: text,
-            purchase: {
-              store: purchase.store,
-              amount: purchase.amount,
-              category: TO_ENGINE[purchase.category],
-            },
-          }),
-        });
+        const body = await request<ConversationResponse>(
+          "/conversation",
+          signal,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              message: text,
+              purchase: {
+                store: purchase.store,
+                amount: purchase.amount,
+                category: TO_ENGINE[purchase.category],
+              },
+            }),
+          },
+          CONVERSATION_TIMEOUT_MS,
+        );
         return {
           reply: body.reply,
           purchasePatch: body.purchasePatch ?? undefined,
+          voice: body.voice ? toAbsoluteVoice(body.voice) : undefined,
+        };
+      },
+
+      // Single-shot: no history sent, matching the backend's non-goal of
+      // multi-turn voice dialogue. The current purchase still travels along
+      // as form fields so an earlier typed/edited amount or store isn't lost.
+      async sendVoice(fileUri, mimeType, purchase, signal) {
+        const form = new FormData();
+        if (Platform.OS === "web") {
+          // On web the recorder hands back a blob: URL, and the browser's
+          // real FormData needs an actual Blob -- the {uri, type, name}
+          // object below is a React Native-only convention that a browser
+          // silently stringifies into garbage instead of a file part.
+          const blob = await fetch(fileUri).then((r) => r.blob());
+          const type = blob.type || mimeType;
+          form.append("audio", blob, `clip.${type.split("/")[1] ?? "webm"}`);
+        } else {
+          // React Native's fetch accepts this {uri, type, name} shape in
+          // place of a real Blob -- it streams the file at `uri` directly.
+          form.append("audio", {
+            uri: fileUri,
+            type: mimeType,
+            name: `clip.${mimeType.split("/")[1] ?? "m4a"}`,
+          } as unknown as Blob);
+        }
+        form.append("store", purchase.store);
+        form.append("amount", String(purchase.amount));
+        form.append("category", TO_ENGINE[purchase.category]);
+
+        const body = await request<ConversationResponse>(
+          "/conversation/voice",
+          signal,
+          { method: "POST", body: form },
+          CONVERSATION_TIMEOUT_MS,
+        );
+        return {
+          reply: body.reply,
+          purchasePatch: body.purchasePatch ?? undefined,
+          voice: body.voice ? toAbsoluteVoice(body.voice) : undefined,
+          transcript: body.transcript,
         };
       },
     },

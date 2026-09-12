@@ -146,6 +146,7 @@ down you get an error rather than invented numbers.
 |---|---|
 | `POST /recommend` | Rank every card for a purchase. `{merchant, amount, category?}` |
 | `POST /conversation` | Ask a question in English. `{message, purchase, history?}` |
+| `POST /conversation/voice` | Ask a question by voice. Multipart audio upload (+ optional `store`/`amount`/`category`); transcribed by Gemini and answered by the same pipeline as `/conversation` |
 | `GET /dashboard` | Cards, balances, limits, utilization |
 | `POST /nessie/sync` | Refresh balances from Nessie |
 | `GET /cards/search?q=` | Search the VectorMint catalog |
@@ -157,6 +158,8 @@ with the reason — nothing disappears silently.
 
 `/conversation` returns `generated: true` when the wording came from Gemini and
 passed the grounding check, `false` when it is the engine's own sentence.
+`/conversation/voice` returns the same shape plus `transcript` — what Gemini
+heard, for the chat UI's own bubble.
 
 ---
 
@@ -175,17 +178,17 @@ server, a database, or a network.
 ## What is and isn't wired
 
 **Working end to end:** Nessie account sync, VectorMint rates, the scoring
-engine, the recommendation screen, and the Gemini-phrased chat.
+engine, the recommendation screen, the Gemini-phrased chat, and voice input —
+tap the mic in the chat screen, speak, tap again to stop and send. Verified on
+web (Chrome); not yet tried on a real native device or simulator.
 
 **Not wired:**
 
-- **Voice input.** The microphone button reports that it isn't connected. Use
-  the chat icon beside it. Audio capture needs a streaming endpoint that
-  doesn't exist yet.
 - **Auth.** `/auth/login` returns a fixed token; every route acts as user 1.
 - **Adding a card from the app.** Accounts are created by the seed script.
 - **`GET /nessie/merchants`** returns an empty list, so merchant-category
-  cross-referencing falls back to a keyword map.
+  cross-referencing falls back to a keyword map for typed messages — voice
+  input has the same gap, using Gemini's own category guess as-is.
 
 ---
 
@@ -204,3 +207,8 @@ State these before someone finds them.
   accounts behind them are not real accounts.
 - **Gemini's free tier returns 503 under load.** We retry, then fall back to
   the engine's sentence. Fluency degrades; accuracy doesn't.
+- **Recording has no mid-take cancel.** Tapping the mic again always stops
+  and sends; there's no way to discard a clip without sending it.
+- **Mic permission prompts use Expo Go's own defaults.** No custom
+  `Info.plist` / `AndroidManifest` entries yet, so a standalone build would
+  need that wired up before shipping.

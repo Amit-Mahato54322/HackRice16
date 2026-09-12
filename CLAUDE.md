@@ -27,11 +27,11 @@ A mobile app that recommends the best credit card to use for a purchase in real 
 - Cache VectorMint responses in Postgres at card-mapping time — don't hit VectorMint live on every recommendation call.
 
 ## Current Status
-- Done: M1 (backend scaffold + `mobile-app` Expo skeleton, since superseded by a fuller build), M3 (real Nessie sync + live `/dashboard`), the scoring engine (dollar-priced reward-minus-risk model, 11 passing tests in `backend/tests/test_engine.py`), M7 (engine wired into `/recommend`, falling back to a seeded demo wallet until M4 ships), M8 (ElevenLabs TTS — backend generates real audio, `mobile-app`'s playback service plays a backend URL when present, on-device speech otherwise)
+- Done: M1 (backend scaffold + `mobile-app` Expo skeleton, since superseded by a fuller build), M3 (real Nessie sync + live `/dashboard`), the scoring engine (dollar-priced reward-minus-risk model, 11 passing tests in `backend/tests/test_engine.py`), M7 (engine wired into `/recommend`, falling back to a seeded demo wallet until M4 ships), M8 (ElevenLabs TTS — backend generates real audio, `mobile-app`'s playback service plays a backend URL when present, on-device speech otherwise), M6 (voice input — `POST /conversation/voice` transcribes an uploaded clip via Gemini and runs it through the same grounded reply pipeline as typed `/conversation` messages; real mic recording wired end-to-end in `mobile-app`, verified on web only — not yet tried on a native device/simulator, no mid-recording cancel, no Nessie merchant cross-reference for category validation, mic permission strings rely on Expo Go's defaults)
 - In progress: M4 (real card mapping — `/cards/search` and `/cards/map` are still M1 stubs, so `/recommend` runs on the demo wallet for anything not hand-wired like `scripts/seed_nessie.py`'s three cards)
 - Deferred: M2 (login) — out of scope for the demo, app boots straight to a hardcoded user
 - Known issue: `backend/tests/test_nessie.py` has a real Nessie API key committed in plaintext — rotate it on Nessie's dashboard
-- Next: M4 (real card mapping), M6 (voice capture + Gemini extraction)
+- Next: M4 (real card mapping)
 
 ## Full Plan
 See `docs/PLAN.md` for architecture, data model, scoring formula, edge cases, and the full milestone list.

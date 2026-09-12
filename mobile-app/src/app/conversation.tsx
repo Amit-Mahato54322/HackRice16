@@ -14,6 +14,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from "expo-audio";
+import {
   Button,
   ChatBubble,
   Copy,
@@ -51,8 +57,24 @@ export default function ConversationScreen() {
   const scroll = useRef<ScrollView>(null);
   const request = useRef<AbortController | null>(null);
   const messageRequest = useRef<AbortController | null>(null);
+  const playbackRequest = useRef<AbortController | null>(null);
   const [sending, setSending] = useState(false);
   const wave = useRef(new Animated.Value(0)).current;
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  // Guards the async gap between tapping the mic and the recorder actually
+  // starting, so a fast double-tap can't call recorder.record() twice.
+  const startingRecording = useRef(false);
+
+  // Leaving mid-recording (back navigation, a message sent instead, "Compare
+  // my cards" tapped while listening) must stop the native mic session, not
+  // just the `listening` flag -- otherwise it keeps capturing in the
+  // background after the screen's moved on.
+  const abandonRecording = useCallback(() => {
+    setListening((was) => {
+      if (was) void recorder.stop().catch(() => {});
+      return false;
+    });
+  }, [recorder]);
 
   useFocusEffect(
     useCallback(() => {
@@ -61,26 +83,34 @@ export default function ConversationScreen() {
       return () => {
         request.current?.abort();
         messageRequest.current?.abort();
-        setListening(false);
+        playbackRequest.current?.abort();
+        void services.playback.stop().catch(() => {});
+        abandonRecording();
       };
-    }, []),
+    }, [services, abandonRecording]),
   );
   useEffect(() => {
     request.current?.abort();
     messageRequest.current?.abort();
+    playbackRequest.current?.abort();
+    void services.playback.stop().catch(() => {});
     setMessage("");
     setReply("");
     setEditing(null);
     setError("");
     setLoading(false);
     setSending(false);
-    setListening(false);
-  }, [flowId, typing]);
+    abandonRecording();
+  }, [flowId, typing, services, abandonRecording]);
   useEffect(() => {
     if (typing !== "1") return;
     const focus = setTimeout(() => composer.current?.focus(), 350);
     return () => clearTimeout(focus);
   }, [typing]);
+  // `listening` means "actively recording" -- the wave animation runs for as
+  // long as capture is on; actually reading the microphone happens in
+  // toggleRecording below, not here, since starting/stopping the recorder
+  // itself must stay outside a cleanup-driven effect.
   useEffect(() => {
     if (!listening) return;
     let active = true;
@@ -101,41 +131,12 @@ export default function ConversationScreen() {
     void AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
       if (active && !reduced) animation.start();
     });
-    const voiceRequest = new AbortController();
-    let closeSession: (() => void) | undefined;
-    void services.voice
-      .start((event) => {
-        if (voiceRequest.signal.aborted) return;
-        if (event.type === "status" && event.status === "idle")
-          setListening(false);
-        if (event.type === "turn") {
-          if (event.turn.purchasePatch)
-            updatePurchase(event.turn.purchasePatch);
-          appendMessages([{ role: "assistant", text: event.turn.reply }]);
-        }
-        if (event.type === "error") {
-          setReply(event.message);
-          setListening(false);
-        }
-      }, voiceRequest.signal)
-      .then((session) => {
-        if (voiceRequest.signal.aborted) session.close();
-        else closeSession = session.close;
-      })
-      .catch(() => {
-        if (!voiceRequest.signal.aborted) {
-          setReply("Voice is unavailable. You can type instead.");
-          setListening(false);
-        }
-      });
     return () => {
       active = false;
-      voiceRequest.abort();
-      closeSession?.();
       animation.stop();
       wave.setValue(0);
     };
-  }, [listening, wave, services]);
+  }, [listening, wave]);
 
   function edit(field: keyof Purchase) {
     setEditing(field);
@@ -169,7 +170,7 @@ export default function ConversationScreen() {
     const pending = new AbortController();
     messageRequest.current = pending;
     setSending(true);
-    setListening(false);
+    abandonRecording();
     try {
       const turn = await services.conversation.sendText(
         message.trim(),
@@ -184,6 +185,12 @@ export default function ConversationScreen() {
       ]);
       setReply("");
       setMessage("");
+      if (turn.voice) {
+        playbackRequest.current?.abort();
+        const playing = new AbortController();
+        playbackRequest.current = playing;
+        void services.playback.play(turn.voice, playing.signal).catch(() => {});
+      }
     } catch (error) {
       if (!pending.signal.aborted) {
         setReply(
@@ -200,10 +207,78 @@ export default function ConversationScreen() {
       if (messageRequest.current === pending) setSending(false);
     }
   }
+  // Tap to start, tap again to stop and send -- single-shot, no partial
+  // results while recording (matches the backend's non-goal of multi-turn
+  // voice dialogue).
+  async function toggleRecording() {
+    if (listening) {
+      setListening(false);
+      await recorder.stop();
+      const uri = recorder.uri;
+      if (!uri) {
+        setReply("Recording failed. Please try again or type instead.");
+        return;
+      }
+      messageRequest.current?.abort();
+      const pending = new AbortController();
+      messageRequest.current = pending;
+      setSending(true);
+      try {
+        const turn = await services.conversation.sendVoice(
+          uri,
+          "audio/m4a",
+          purchase,
+          pending.signal,
+        );
+        if (pending.signal.aborted) return;
+        if (turn.purchasePatch) updatePurchase(turn.purchasePatch);
+        const spoken = turn.transcript
+          ? [{ role: "user" as const, text: turn.transcript }]
+          : [];
+        appendMessages([...spoken, { role: "assistant", text: turn.reply }]);
+        setReply("");
+        if (turn.voice) {
+          playbackRequest.current?.abort();
+          const playing = new AbortController();
+          playbackRequest.current = playing;
+          void services.playback.play(turn.voice, playing.signal).catch(() => {});
+        }
+      } catch (error) {
+        if (!pending.signal.aborted) {
+          setReply(
+            error instanceof Error && error.message
+              ? `Couldn't send that: ${error.message}`
+              : "Message failed. Please try sending again.",
+          );
+        }
+      } finally {
+        if (messageRequest.current === pending) setSending(false);
+      }
+      return;
+    }
+
+    if (startingRecording.current) return; // already starting; ignore the double-tap
+    startingRecording.current = true;
+    try {
+      Keyboard.dismiss();
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setReply("Microphone access is needed to record. You can type instead.");
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setReply("");
+      setListening(true);
+    } finally {
+      startingRecording.current = false;
+    }
+  }
   async function compare() {
     if (loading) return;
     Keyboard.dismiss();
-    setListening(false);
+    abandonRecording();
     setLoading(true);
     request.current?.abort();
     const pending = new AbortController();
@@ -245,16 +320,33 @@ export default function ConversationScreen() {
           contentContainerStyle={styles.content}
         >
           <View style={styles.voice}>
-            <View
-              accessibilityLabel="Voice input is not connected yet"
-              style={styles.outerCircle}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                listening ? "Stop recording and send" : "Start recording"
+              }
+              onPress={() => void toggleRecording()}
+              disabled={sending}
+              style={({ pressed }) => [
+                styles.outerCircle,
+                pressed && s.pressed,
+              ]}
             >
-              <View style={styles.middleCircle}>
+              <View
+                style={[
+                  styles.middleCircle,
+                  listening && { backgroundColor: theme.colors.accentSurfaceStrong },
+                ]}
+              >
                 <View style={styles.innerCircle}>
-                  <Icon name="mic" size={38} />
+                  <Icon
+                    name={listening ? "square" : "mic"}
+                    size={listening ? 26 : 38}
+                    color={listening ? theme.colors.accent : undefined}
+                  />
                 </View>
               </View>
-            </View>
+            </Pressable>
             <View style={styles.wave} accessible={false}>
               {[8, 15, 25, 12, 31, 20, 13, 26, 16, 8, 18].map((height, i) => (
                 <Animated.View
@@ -277,7 +369,11 @@ export default function ConversationScreen() {
               ))}
             </View>
             <Copy accessibilityLiveRegion="polite" style={s.bold}>
-              {ready ? "Ready to compare" : "Tell me what you're buying"}
+              {listening
+                ? "Listening… tap to stop"
+                : ready
+                  ? "Ready to compare"
+                  : "Tell me what you're buying"}
             </Copy>
             <View
               style={[
@@ -286,7 +382,7 @@ export default function ConversationScreen() {
               ]}
             >
               <Copy style={s.small}>
-                Voice input isn’t connected yet · Type below
+                {listening ? "Recording…" : "Tap the mic, or type below"}
               </Copy>
             </View>
           </View>
@@ -450,7 +546,7 @@ export default function ConversationScreen() {
               returnKeyType="send"
               maxLength={200}
               style={styles.composerInput}
-              onFocus={() => setListening(false)}
+              onFocus={abandonRecording}
             />
             {message.trim() ? (
               <IconButton
@@ -461,13 +557,10 @@ export default function ConversationScreen() {
               />
             ) : (
               <IconButton
-                name="mic"
-                label="Voice input is not connected yet. Type your purchase instead."
-                onPress={() =>
-                  setReply(
-                    "Voice input isn’t connected yet — type the store and amount, or tap a field above.",
-                  )
-                }
+                name={listening ? "square" : "mic"}
+                label={listening ? "Stop recording and send" : "Record a message"}
+                onPress={() => void toggleRecording()}
+                filled={listening}
               />
             )}
           </View>

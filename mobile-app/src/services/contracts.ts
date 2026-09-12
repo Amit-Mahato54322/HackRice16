@@ -49,6 +49,10 @@ export type Recommendation = {
 export type ConversationTurn = {
   reply: string;
   purchasePatch?: Partial<Purchase>;
+  voice?: VoiceOutput;
+  // What the user said, when this turn came from a recorded clip rather
+  // than typed text -- absent for sendText() turns.
+  transcript?: string;
 };
 export type VoiceEvent =
   | {
@@ -84,9 +88,18 @@ export interface CreditPickServices {
       purchase: Purchase,
       signal: AbortSignal,
     ) => Promise<ConversationTurn>;
+    // A recorded clip's local file URI (not its bytes -- the adapter reads
+    // it). Single-shot: no partial results, no follow-up questions.
+    sendVoice: (
+      fileUri: string,
+      mimeType: string,
+      purchase: Purchase,
+      signal: AbortSignal,
+    ) => Promise<ConversationTurn>;
   };
-  // The future native audio adapter captures PCM and sends it to our backend.
-  // The backend owns ElevenLabs credentials, session creation and processing.
+  // Retained for a future streaming capture adapter. The backend has no
+  // streaming endpoint, so today's recording flow calls
+  // conversation.sendVoice directly instead of going through this.
   voice: {
     start: (
       onEvent: (event: VoiceEvent) => void,
