@@ -84,6 +84,14 @@ def normalize_reward_json(cached, fallback=None):
 
     rules = cached.get("reward_rules") or cached.get("rates") or cached.get("categories")
 
+    # app/services/vectormint.py hands back a flat {category: rate} mapping
+    # rather than a nested rule list, so treat the payload itself as the
+    # mapping when it holds no rule collection but does hold numbers.
+    if not rules and all(
+        isinstance(value, (int, float)) for value in cached.values()
+    ):
+        rules = cached
+
     rates = {}
     base_rate = None
 

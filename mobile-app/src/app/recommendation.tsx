@@ -170,7 +170,7 @@ export default function RecommendationScreen() {
         />
         <View style={{ alignItems: "center", gap: 6 }}>
           <Copy style={[s.small, { textAlign: "center" }]}>
-            Demo · Estimates based on latest synced balances.
+            Estimates based on your latest synced balances.
           </Copy>
         </View>
       </View>
@@ -180,7 +180,7 @@ export default function RecommendationScreen() {
         onClose={() => setComparison(false)}
       >
         <Copy style={s.small}>
-          {purchase.store} · {money(purchase.amount, 2)} · Demo data
+          {purchase.store} · {money(purchase.amount, 2)}
         </Copy>
         {[result, ...recommendation.alternatives].map((value) => {
           const card = value.card;
@@ -216,10 +216,9 @@ export default function RecommendationScreen() {
           );
         })}
         <Copy style={s.small}>
-          Comparing the two featured demo cards. Points are valued at 1¢ each
-          for this example. Utilization = (balance + purchase) ÷ credit limit.
-          The alert threshold is a personal reminder, not a credit-score
-          guarantee.
+          Reward estimates come from each card’s published earn rates.
+          Utilization = (balance + purchase) ÷ credit limit. The alert
+          threshold is a personal reminder, not a credit-score guarantee.
         </Copy>
         <Button title="Done" onPress={() => setComparison(false)} />
       </Sheet>

@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  Badge,
   Button,
   ChatBubble,
   Copy,
@@ -230,7 +229,7 @@ export default function ConversationScreen() {
           <View style={styles.voice}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Replay simulated voice interaction. No audio is recorded."
+              accessibilityLabel="Voice input is not connected yet. Type your purchase below."
               onPress={() => {
                 setListening(false);
                 requestAnimationFrame(() => setListening(true));
@@ -273,8 +272,9 @@ export default function ConversationScreen() {
                 { justifyContent: "center", flexWrap: "wrap", gap: 6 },
               ]}
             >
-              <Badge>Demo mode</Badge>
-              <Copy style={s.small}>Simulated voice · No audio recorded</Copy>
+              <Copy style={s.small}>
+                Voice input isn’t connected yet · Type below
+              </Copy>
             </View>
           </View>
           <View style={{ gap: 12 }}>
@@ -392,7 +392,7 @@ export default function ConversationScreen() {
           {!!reply && <ChatBubble>{reply}</ChatBubble>}
           {!editing && (
             <Button
-              title={loading ? "Comparing demo cards…" : "Compare my cards"}
+              title={loading ? "Comparing your cards…" : "Compare my cards"}
               icon="arrow-right"
               loading={loading}
               onPress={compare}
@@ -426,7 +426,7 @@ export default function ConversationScreen() {
             ) : (
               <IconButton
                 name="mic"
-                label="Replay simulated microphone"
+                label="Voice input not connected"
                 onPress={() => {
                   Keyboard.dismiss();
                   setListening(false);

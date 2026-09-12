@@ -26,7 +26,6 @@ export function WalletCard({
     >
       <View style={styles.top}>
         <Leaf small />
-        <Copy style={styles.demo}>DEMO</Copy>
       </View>
       <Copy style={styles.name}>{card.name}</Copy>
       <View style={styles.bottom}>
@@ -53,12 +52,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-  },
-  demo: {
-    fontSize: 10,
-    lineHeight: 14,
-    letterSpacing: 1.8,
-    color: theme.colors.cardInk,
   },
   name: {
     fontSize: 23,

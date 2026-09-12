@@ -75,7 +75,18 @@ def _build_voice(transcript: str) -> dict:
         return {"transcript": transcript, "audio": FALLBACK_AUDIO}
 
 
-def _card_out(scored: dict) -> dict:
+def _card_out(scored: dict, state: dict, amount: float) -> dict:
+    """One scored card, including what the purchase does to its utilization.
+
+    The client cannot compute this itself: the engine may be scoring the
+    seeded demo wallet, whose cards are not the accounts /dashboard lists, so
+    there is nothing to join against. Reporting it here keeps the two
+    responses consistent whichever wallet was used.
+    """
+    card_state = state["cards"].get(scored["card"], {})
+    limit = card_state.get("limit") or 0.0
+    balance = card_state.get("balance", 0.0)
+
     return {
         "card_id": scored["card"],
         "display_name": scored["card_name"],
@@ -84,6 +95,10 @@ def _card_out(scored: dict) -> dict:
         "score": scored["score"],
         "breakdown": scored["breakdown"],
         "why": scored["why"],
+        "credit_limit": limit,
+        "current_balance": balance,
+        "available": round(limit - balance - amount, 2) if limit else None,
+        "utilization": round((balance + amount) / limit, 4) if limit else None,
     }
 
 
@@ -107,8 +122,8 @@ def recommend(request: RecommendRequest, db: Session = Depends(get_db)):
         "merchant": request.merchant,
         "amount": request.amount,
         "category": category,
-        "recommendation": _card_out(top) if top else None,
-        "ranked": [_card_out(c) for c in all_cards[1:]],
+        "recommendation": _card_out(top, state, request.amount) if top else None,
+        "ranked": [_card_out(c, state, request.amount) for c in all_cards[1:]],
         "disqualified": result["disqualified"] + skipped,
         "voice": _build_voice(transcript),
     }

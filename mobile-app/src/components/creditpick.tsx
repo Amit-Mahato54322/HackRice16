@@ -38,7 +38,7 @@ export function Copy({ style, ...props }: TextProps) {
 export function Panel({ style, ...props }: ViewProps) {
   return <View {...props} style={[s.panel, style]} />;
 }
-export function Badge({ children = "Demo" }: PropsWithChildren) {
+export function Badge({ children }: PropsWithChildren) {
   return (
     <View style={s.badge}>
       <Copy style={s.badgeText}>{children}</Copy>

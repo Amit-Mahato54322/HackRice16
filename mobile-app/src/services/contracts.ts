@@ -12,7 +12,6 @@ export type WalletSnapshot = {
   featuredCardIds: string[];
   available: number;
   utilization: number;
-  isDemo: boolean;
 };
 export type CardOption = {
   card: WalletCard;
@@ -41,7 +40,6 @@ export type Recommendation = {
     detail?: string;
   }[];
   voice: VoiceOutput;
-  isDemo: boolean;
 };
 export type ConversationTurn = {
   reply: string;
@@ -65,7 +63,6 @@ export type VoiceSession = {
   close: () => void;
 };
 export interface CreditPickServices {
-  mode: "demo" | "live";
   initialPurchase: Purchase;
   maxPurchaseAmount: number;
   wallet: { get: (signal: AbortSignal) => Promise<WalletSnapshot> };

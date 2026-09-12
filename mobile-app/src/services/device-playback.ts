@@ -48,7 +48,7 @@ async function playRemoteAudio(url: string, signal: AbortSignal): Promise<void> 
   });
 }
 
-// Demo/no-audio fallback: speaks the transcript via on-device TTS.
+// Fallback when the backend attached no audio: on-device TTS of the text.
 async function speakTranscript(transcript: string, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return;
   const voices = await Speech.getAvailableVoicesAsync();
@@ -77,8 +77,8 @@ async function speakTranscript(transcript: string, signal: AbortSignal): Promise
 
 // Plays the backend's generated audio when present (see docs/PLAN.md M8 and
 // mobile-app/ARCHITECTURE.md "Voice / ElevenLabs"); falls back to on-device
-// speech synthesis of the transcript when it isn't (demo mode, or a backend
-// response with no audio attached). The screen always retains the transcript
+// speech synthesis of the transcript when it isn't (a backend response with
+// no audio attached). The screen always retains the transcript
 // if playback of either kind fails.
 export const devicePlayback: CreditPickServices["playback"] = {
   async stop() {

@@ -1,40 +1,39 @@
 # CreditPick
 
-A native React Native + Expo SDK 57 + TypeScript frontend demo. Deep forest-green backgrounds, lighter green panels, vivid green accents, off-white headings, muted sage supporting text, and Feather line icons, based on the supplied theme reference. No HTML, WebView, backend, authentication, bank integration, or microphone access.
+The CreditPick app: React Native + Expo SDK 57 + TypeScript. Deep forest-green backgrounds, lighter green panels, vivid green accents, off-white headings, muted sage supporting text, and Feather line icons. Every figure it shows comes from the FastAPI backend; there is no local card data and no offline mode. No HTML, WebView, or microphone access.
 
 The dark theme uses semantic color tokens, light status-bar content, dark keyboards, and a matching native navigation theme. Existing screen sizes, safe areas, font scaling, touch targets, and interactions are preserved. Warnings use amber with text/icons, keeping them distinct from green brand accents. Primary text/accent combinations were checked for at least 4.5:1 contrast. The styling follows Apple's [2026 iOS branding guidance](https://developer.apple.com/videos/play/wwdc2026/251/) and [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials): restrained accent color, familiar navigation, and separation between controls and content. This change uses opaque layered surfaces; it does not add a Liquid Glass renderer or replace the existing navigator.
 
-## Run
+## Run against the backend
 
-Use Node 22.13+ (Node 24 recommended for the built-in TypeScript test runner).
+Use Node 22.13 or newer. The app has no offline mode. Every figure comes from the FastAPI backend, so
+start that first (see the root `README.md`), then:
 
 ```sh
 npm install
-npm start
+EXPO_PUBLIC_API_URL=http://<your-lan-ip>:8000 npx expo start
 ```
 
-Press `i` for iOS or `a` for Android, or scan the QR code in an Expo Go version supporting SDK 57. Direct commands: `npm run ios` / `npm run android`.
+`EXPO_PUBLIC_API_URL` must be your machine's LAN address, not `localhost`, for
+a phone to reach it. It defaults to `http://localhost:8000`, which works only
+in the browser.
 
-## Demo flow
+## Flow
 
-- Home → microphone → simulated conversation → compare → recommendation.
-- The conversation icon to the right of the microphone opens the transcript and focuses the composer. Send an amount like `$125.50`; other messages receive scripted guidance.
-- Tap any purchase chip to edit the store, category, or amount. Amounts must be $0.01–$2,500, with up to two decimal places.
-- “View comparison” opens a dismissible bottom sheet. “Hear recommendation” uses device text-to-speech and also displays a transcript, including when speech is unavailable. iOS silent mode can mute speech.
-- “Ask another question” restores the default purchase. Back navigation preserves edits.
-- All ten cards appear by default in the centered horizontal carousel. Adjacent card edges hint that more cards are available by swiping. Tap a card to see its details. There are no Wallet or Settings screens.
-
-## Mock calculations
-
-The ten local cards total a $10,000 limit, $1,800 balance, and $8,200 available credit: 18% utilization. Everyday Cash has a $3,146 illustrative limit and $646 balance. A $90 purchase leaves $2,410 available and produces 23.4% projected utilization when rounded to one decimal.
-
-Only Everyday Cash and Travel Plus participate in purchase comparisons. Everyday Cash earns 3% on groceries and 1% otherwise; Travel Plus earns two points per dollar, with whole points rounded down. Ranking assumes 1¢ per point and prioritizes cards with sufficient available credit. Changing category may change the winning card. Changing the amount updates rewards, credit, and utilization. No balance is actually charged.
-
-The fixed 30% demo threshold is a reminder, not a credit-score guarantee. All financial information is demo data. “Latest synced balances” is reference UI copy; no sync takes place. State is memory-only and resets on app restart. Voice input is a short animation and scripted text; no recording or permission request occurs.
+- Home lists your linked cards, with balances and utilization from `/dashboard`.
+- The chat icon beside the microphone opens the composer. Ask a question and
+  the backend answers it; the scoring engine computes the numbers and Gemini
+  phrases them.
+- The microphone is not connected yet — audio capture needs a streaming
+  endpoint the backend does not have.
+- Tap a purchase chip to edit the store, category, or amount ($0.01–$2,500).
+- "Compare my cards" ranks every card and opens the recommendation screen.
+- "View comparison" shows the full ranking. "Hear recommendation" plays the
+  backend's audio when present, and falls back to device text-to-speech.
 
 ## Structure
 
-`src/theme.ts` holds design tokens; `src/components/creditpick.tsx` contains reusable UI. `src/domain` contains shared models; `src/state` owns the purchase session and async resources. `src/services/contracts.ts` defines replaceable wallet, recommendation, conversation, voice-session, and playback interfaces. `src/services/index.ts` selects the local implementations. Screens do not import mock data or perform card ranking. `src/app` uses a native stack with Home, Conversation, and Recommendation. Conversation messages live in the provider and survive returning Home.
+`src/theme.ts` holds design tokens; `src/components/creditpick.tsx` contains reusable UI. `src/domain` contains shared models; `src/state` owns the purchase session and async resources. `src/services/contracts.ts` defines replaceable wallet, recommendation, conversation, voice-session, and playback interfaces. `src/services/index.ts` composes the HTTP implementation in `src/services/http-services.ts`, the one place that knows the backend's wire format. Screens never rank cards or compute rewards. `src/app` uses a native stack with Home, Conversation, and Recommendation. Conversation messages live in the provider and survive returning Home.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for backend ownership, cancellation semantics, DTO conventions, and the future backend/ElevenLabs audio path. The contracts are integration boundaries, not an implemented backend connection.
 

@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  Badge,
   Button,
   CardVisual,
   Copy,
@@ -125,7 +124,7 @@ export default function HomeScreen() {
               <View style={styles.sideSlot} />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Start simulated voice conversation"
+                accessibilityLabel="Open the conversation"
                 onPress={() => openConversation(false)}
                 style={({ pressed }) => [
                   styles.microphone,
@@ -146,7 +145,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <Copy style={[s.small, { textAlign: "center" }]}>
-              Demo data · Voice is simulated
+              Voice input isn’t connected yet · Use the chat button
             </Copy>
           </View>
         </View>
@@ -156,16 +155,12 @@ export default function HomeScreen() {
         title="Add a card"
         onClose={() => setShowAddCard(false)}
       >
-        <Badge>Demo mode</Badge>
         <Panel style={{ gap: 12 }}>
           <Icon name="credit-card" size={32} />
           <Copy style={s.bold}>Connect your cards here</Copy>
           <Copy>
-            Card linking isn’t connected yet. Once the backend is available,
-            you’ll be able to add cards here and see them in your carousel.
-          </Copy>
-          <Copy style={s.small}>
-            No bank connection or card information is collected in this demo.
+            Adding a card from the app isn’t wired up yet. Accounts are linked
+            by the backend and appear in your carousel once they sync.
           </Copy>
         </Panel>
         <Button title="Got it" onPress={() => setShowAddCard(false)} />
@@ -178,7 +173,6 @@ export default function HomeScreen() {
         {selected && (
           <>
             <CardVisual card={selected} large />
-            <Badge>Demo data</Badge>
             <Panel style={{ gap: 12 }}>
               <Copy>Credit limit: {money(selected.limit)}</Copy>
               <Copy>Current balance: {money(selected.balance)}</Copy>
