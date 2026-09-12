@@ -1,8 +1,8 @@
 # CreditPick
 
-A native React Native + Expo SDK 57 + TypeScript frontend demo. Dark charcoal surfaces, soft coral-red accents, raised panels, and Feather line icons. No HTML, WebView, backend, authentication, bank integration, or microphone access.
+A native React Native + Expo SDK 57 + TypeScript frontend demo. Dark charcoal surfaces, soft green accents and green-tinted text, raised panels, and Feather line icons. No HTML, WebView, backend, authentication, bank integration, or microphone access.
 
-The dark theme uses semantic color tokens, light status-bar content, dark keyboards, and a matching native navigation theme. Existing screen sizes, safe areas, font scaling, touch targets, and interactions are preserved. Warnings use amber with text/icons, keeping them distinct from red brand accents. Primary text/accent combinations were checked for at least 4.5:1 contrast. The styling follows Apple's [2026 iOS branding guidance](https://developer.apple.com/videos/play/wwdc2026/251/) and [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials): restrained accent color, familiar navigation, and separation between controls and content. This change uses opaque layered surfaces; it does not add a Liquid Glass renderer or replace the existing navigator.
+The dark theme uses semantic color tokens, light status-bar content, dark keyboards, and a matching native navigation theme. Existing screen sizes, safe areas, font scaling, touch targets, and interactions are preserved. Warnings use amber with text/icons, keeping them distinct from green brand accents. Primary text/accent combinations were checked for at least 4.5:1 contrast. The styling follows Apple's [2026 iOS branding guidance](https://developer.apple.com/videos/play/wwdc2026/251/) and [materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials): restrained accent color, familiar navigation, and separation between controls and content. This change uses opaque layered surfaces; it does not add a Liquid Glass renderer or replace the existing navigator.
 
 ## Run
 
@@ -18,11 +18,11 @@ Press `i` for iOS or `a` for Android, or scan the QR code in an Expo Go version 
 ## Demo flow
 
 - Home → microphone → simulated conversation → compare → recommendation.
-- “Type instead” focuses the composer. Send an amount like `$125.50`; other messages receive scripted guidance.
+- The conversation icon to the right of the microphone opens the transcript and focuses the composer. Send an amount like `$125.50`; other messages receive scripted guidance.
 - Tap any purchase chip to edit the store, category, or amount. Amounts must be $0.01–$2,500, with up to two decimal places.
 - “View comparison” opens a dismissible bottom sheet. “Hear recommendation” uses device text-to-speech and also displays a transcript, including when speech is unavailable. iOS silent mode can mute speech.
 - “Ask another question” restores the default purchase. Back navigation preserves edits.
-- Wallet shows all ten sample cards and their details. Settings changes the session’s utilization threshold or resets the demo.
+- “View all” expands all ten cards in the Home card list; “Show less” restores the featured cards. Tap a card to see its details. There are no Wallet or Settings screens.
 
 ## Mock calculations
 
@@ -30,15 +30,15 @@ The ten local cards total a $10,000 limit, $1,800 balance, and $8,200 available 
 
 Only Everyday Cash and Travel Plus participate in purchase comparisons. Everyday Cash earns 3% on groceries and 1% otherwise; Travel Plus earns two points per dollar, with whole points rounded down. Ranking assumes 1¢ per point and prioritizes cards with sufficient available credit. Changing category may change the winning card. Changing the amount updates rewards, credit, and utilization. No balance is actually charged.
 
-The 30% default threshold is a configurable reminder, not a credit-score guarantee. All financial information is demo data. “Latest synced balances” is reference UI copy; no sync takes place. State is memory-only and resets on app restart. Voice input is a short animation and scripted text; no recording or permission request occurs.
+The fixed 30% demo threshold is a reminder, not a credit-score guarantee. All financial information is demo data. “Latest synced balances” is reference UI copy; no sync takes place. State is memory-only and resets on app restart. Voice input is a short animation and scripted text; no recording or permission request occurs.
 
 ## Structure
 
-`src/theme.ts` holds design tokens; `src/components/creditpick.tsx` contains reusable UI. `src/domain` contains shared models; `src/state` owns the purchase session and async resources. `src/services/contracts.ts` defines replaceable wallet, recommendation, conversation, voice-session, and playback interfaces. `src/services/index.ts` selects the local implementations. Screens do not import mock data or perform card ranking. `src/app` uses Expo Router’s native stack plus Home / Wallet / Settings tabs.
+`src/theme.ts` holds design tokens; `src/components/creditpick.tsx` contains reusable UI. `src/domain` contains shared models; `src/state` owns the purchase session and async resources. `src/services/contracts.ts` defines replaceable wallet, recommendation, conversation, voice-session, and playback interfaces. `src/services/index.ts` selects the local implementations. Screens do not import mock data or perform card ranking. `src/app` uses a native stack with Home, Conversation, and Recommendation. Conversation messages live in the provider and survive returning Home.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for backend ownership, cancellation semantics, DTO conventions, and the future backend/ElevenLabs audio path. The contracts are integration boundaries, not an implemented backend connection.
 
-Home now uses a compact viewport layout instead of a scrolling page at normal text sizes, with a horizontal microphone prompt on shorter phones. Recommendation details and speech transcripts open in sheets. Scrolling remains available for very short displays, accessibility text, the keyboard, and longer lists/conversations so content stays reachable.
+Home has a centered italic serif wordmark, an inline card list, and a bottom-centered microphone with a conversation shortcut on its right. At normal text sizes, only the card list scrolls when needed; the voice controls stay anchored. Recommendation details and speech transcripts open in sheets. Scrolling remains available for very short displays, accessibility text, the keyboard, and longer lists/conversations so content stays reachable.
 
 ## Checks
 
@@ -50,6 +50,6 @@ npx expo export --platform ios --platform android
 
 Tests cover wallet reconciliation, default estimates, edited amounts and categories, credit eligibility, validation, service responses, request cancellation, and voice-session cleanup. Both native bundles and TypeScript were checked. Visual and interactive device review is left to the user, as requested. Styling follows the written specification and layout feedback from the supplied simulator screenshots.
 
-Suggested device review: Home → Type instead → edit all three chips → compare → comparison sheet → speech → back → ask another question; then open Wallet and Settings. Repeat on a small screen with larger system text and the keyboard visible.
+Suggested device review: Home → View all → card details → Show less → conversation icon → send a message → back to Home → reopen conversation and confirm transcript → edit all three chips → compare → comparison sheet → speech → ask another question. Repeat on a small screen with larger system text and the keyboard visible.
 
 Expo APIs were checked against the [SDK 57 reference](https://docs.expo.dev/versions/v57.0.0/), [Router reference](https://docs.expo.dev/versions/v57.0.0/sdk/router/), and [Speech reference](https://docs.expo.dev/versions/v57.0.0/sdk/speech/).

@@ -19,7 +19,10 @@ type CreditPickState = {
   updatePurchase: (patch: Partial<Purchase>) => void;
   reset: () => void;
   threshold: number;
-  setThreshold: (value: number) => void;
+  conversationMessages: { role: "user" | "assistant"; text: string }[];
+  appendMessages: (
+    messages: { role: "user" | "assistant"; text: string }[],
+  ) => void;
   services: CreditPickServices;
   wallet: WalletSnapshot | null;
   walletError: string | null;
@@ -35,7 +38,10 @@ export function CreditPickProvider({
   const [purchase, setPurchase] = useState<Purchase>({
     ...services.initialPurchase,
   });
-  const [threshold, setThreshold] = useState(30);
+  const threshold = 30;
+  const [conversationMessages, setConversationMessages] = useState<
+    CreditPickState["conversationMessages"]
+  >([]);
   const [flowId, setFlowId] = useState(0);
   const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -67,20 +73,20 @@ export function CreditPickProvider({
       value={{
         purchase,
         flowId,
+        conversationMessages,
+        appendMessages: (messages) =>
+          setConversationMessages((current) => [...current, ...messages]),
         updatePurchase: (patch) => {
           invalidate();
           setPurchase((current) => ({ ...current, ...patch }));
         },
         reset: () => {
+          setConversationMessages([]);
           setFlowId((value) => value + 1);
           invalidate();
           setPurchase({ ...services.initialPurchase });
         },
         threshold,
-        setThreshold: (value) => {
-          invalidate();
-          setThreshold(value);
-        },
         services,
         wallet,
         walletError,

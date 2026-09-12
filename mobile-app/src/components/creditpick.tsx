@@ -15,9 +15,8 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CreditCard, money } from "@/domain/models";
+import { CreditCard } from "@/domain/models";
 import type { WalletCard } from "@/services/contracts";
-import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 const c = theme.colors;
@@ -137,18 +136,21 @@ export function IconButton({
 export function Header({
   title,
   back = false,
+  onBack,
 }: {
   title: string;
   back?: boolean;
+  onBack?: () => void;
 }) {
   return (
     <View style={s.header}>
       {back && (
         <IconButton
           name="arrow-left"
-          label="Go back"
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/")
+          label={onBack ? "Back to Home" : "Go back"}
+          onPress={
+            onBack ??
+            (() => (router.canGoBack() ? router.back() : router.replace("/")))
           }
         />
       )}
@@ -286,16 +288,18 @@ export function CardRow({
   card,
   onPress,
   compact = false,
+  prominent = false,
 }: {
   card: WalletCard;
   onPress?: () => void;
   compact?: boolean;
+  prominent?: boolean;
 }) {
   const content = (
     <>
       <CardVisual card={card} />
       <View style={{ flex: 1, gap: compact ? 2 : 5 }}>
-        <Copy style={s.bold}>
+        <Copy style={[s.bold, prominent && { fontSize: 18, lineHeight: 25 }]}>
           {card.name} <Copy style={s.small}>•••• {card.digits}</Copy>
         </Copy>
         <Copy style={s.small}>{card.rewardSummary}</Copy>
@@ -311,6 +315,7 @@ export function CardRow({
       style={({ pressed }) => [
         s.cardRow,
         compact && { paddingVertical: 4 },
+        prominent && { minHeight: 96, paddingVertical: 18, gap: 18 },
         pressed && s.pressed,
       ]}
     >
@@ -318,79 +323,6 @@ export function CardRow({
     </Pressable>
   ) : (
     <View style={s.cardRow}>{content}</View>
-  );
-}
-export function WalletSummary({
-  compact = false,
-  dense = false,
-}: {
-  compact?: boolean;
-  dense?: boolean;
-}) {
-  const { threshold, wallet, walletError, reloadWallet } = useCreditPick();
-  if (walletError)
-    return (
-      <Panel>
-        <Copy>{walletError}</Copy>
-        <TextAction title="Retry" onPress={reloadWallet} />
-      </Panel>
-    );
-  if (!wallet)
-    return (
-      <Panel>
-        <ActivityIndicator
-          color={c.accent}
-          accessibilityLabel="Loading wallet"
-        />
-      </Panel>
-    );
-  const utilization = wallet.utilization;
-  return (
-    <Panel
-      style={{
-        backgroundColor: c.surface,
-        gap: dense ? 6 : compact ? 10 : 20,
-        padding: dense ? 10 : compact ? 12 : 20,
-      }}
-    >
-      {!dense && (
-        <View style={s.row}>
-          <Copy style={[s.bold, { flexShrink: 1 }]}>
-            Your wallet at a glance
-          </Copy>
-          <Badge />
-        </View>
-      )}
-      <View style={s.stats}>
-        <View style={s.stat}>
-          <Copy style={s.statValue}>{wallet.cards.length}</Copy>
-          <Copy style={s.small}>cards connected</Copy>
-        </View>
-        <View style={[s.stat, s.statBorder]}>
-          <Copy style={s.statValue}>{utilization}%</Copy>
-          <Copy style={s.small}>utilization</Copy>
-        </View>
-        <View style={s.stat}>
-          <Copy style={s.statValue}>{money(wallet.available)}</Copy>
-          <Copy style={s.small}>available</Copy>
-        </View>
-      </View>
-      <View style={{ gap: 8 }}>
-        <View
-          accessibilityLabel={`${utilization}% utilization; ${threshold}% alert threshold`}
-          style={s.track}
-        >
-          <View style={[s.trackFill, { width: `${utilization}%` }]} />
-          <View style={[s.marker, { left: `${threshold}%` }]} />
-        </View>
-        <View style={s.row}>
-          <Copy style={s.tiny}>
-            {dense ? "Demo utilization" : "Current utilization"}
-          </Copy>
-          <Copy style={s.tiny}>{threshold}% alert threshold</Copy>
-        </View>
-      </View>
-    </Panel>
   );
 }
 export function ChatBubble({

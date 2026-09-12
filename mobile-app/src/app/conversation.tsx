@@ -31,6 +31,8 @@ export default function ConversationScreen() {
   const { typing } = useLocalSearchParams<{ typing?: string }>();
   const {
     purchase,
+    conversationMessages,
+    appendMessages,
     flowId,
     updatePurchase,
     services,
@@ -107,7 +109,7 @@ export default function ConversationScreen() {
         if (event.type === "turn") {
           if (event.turn.purchasePatch)
             updatePurchase(event.turn.purchasePatch);
-          setReply(event.turn.reply);
+          appendMessages([{ role: "assistant", text: event.turn.reply }]);
         }
         if (event.type === "error") {
           setReply(event.message);
@@ -174,7 +176,11 @@ export default function ConversationScreen() {
       );
       if (pending.signal.aborted) return;
       if (turn.purchasePatch) updatePurchase(turn.purchasePatch);
-      setReply(turn.reply);
+      appendMessages([
+        { role: "user", text: message.trim() },
+        { role: "assistant", text: turn.reply },
+      ]);
+      setReply("");
       setMessage("");
     } catch {
       if (!pending.signal.aborted)
@@ -208,7 +214,11 @@ export default function ConversationScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.header}>
-          <Header title="Ask CreditPick" back />
+          <Header
+            title="Ask CreditPick"
+            back
+            onBack={() => router.dismissTo("/")}
+          />
         </View>
         <ScrollView
           ref={scroll}
@@ -277,6 +287,11 @@ export default function ConversationScreen() {
             </ChatBubble>
             <ChatBubble>Got it! Here’s what I heard:</ChatBubble>
           </View>
+          {conversationMessages.map((entry, index) => (
+            <ChatBubble key={index} user={entry.role === "user"}>
+              {entry.text}
+            </ChatBubble>
+          ))}
           <View style={styles.chips}>
             {(
               [
