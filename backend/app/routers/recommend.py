@@ -1,17 +1,113 @@
 """Recommend route.
 
-M1 stub — returns the committed mock fixture. The real pipeline (Gemini
-extraction, scoring engine, ElevenLabs audio) is wired in across M6-M8
-(see docs/PLAN.md).
+Wraps the scoring engine (app/scoring/engine.py). The response keeps every
+field of the committed M1 fixture with its original meaning, so screens built
+against backend/mock/recommend.json keep working; the scoring detail is added
+alongside. See docs/PLAN.md §7.
+
+Gemini audio extraction (M6) and ElevenLabs audio (M8) still land later; this
+route currently takes merchant and amount as JSON.
 """
 
 from fastapi import APIRouter
+from pydantic import BaseModel, Field
 
 from app.mock import load_mock
+from app.scoring import adapter, engine
+from app.scoring.categorize import categorize
 
 router = APIRouter(tags=["recommend"])
 
+# Fixed 30% threshold for the dashboard's utilization flag (docs/PLAN.md §7).
+# This is a *display* threshold only -- the ranking prices utilization through
+# the engine's risk term rather than flagging it.
+UTILIZATION_FLAG_THRESHOLD = 0.30
+
+AUDIO_PLACEHOLDER = "/mock/recommend-audio-placeholder"
+
+
+class RecommendRequest(BaseModel):
+    merchant: str = Field(..., examples=["HEB"])
+    amount: float = Field(..., gt=0, examples=[80.0])
+    # Nessie's merchant catalog supplies this during the real pipeline; it
+    # overrides the keyword map when present (docs/PLAN.md §7 edge cases).
+    category: str | None = None
+    # "Buying a house in 12 months" -- raises the price of a FICO point enough
+    # that the engine will refuse cash back to protect the score.
+    protection_mode: bool = False
+
+
+def _card_payload(scored, state, amount):
+    """One ranked card, in the M1 contract's shape plus the scoring detail."""
+    card_state = state["cards"][scored["card"]]
+    limit = card_state.get("limit") or 0.0
+    projected = (
+        (card_state.get("balance", 0.0) + amount) / limit if limit > 0 else 0.0
+    )
+
+    return {
+        # --- M1 contract fields, unchanged ---
+        "linked_account_id": card_state.get("linked_account_id"),
+        "display_name": scored["card_name"],
+        "reward_rate": scored["reward_rate"],
+        "estimated_value": round(scored["estimated_value"], 2),
+        "projected_utilization": round(projected, 4),
+        "utilization_flag": projected > UTILIZATION_FLAG_THRESHOLD,
+        "why": scored["why"],
+        # --- added: the scoring detail behind the ranking ---
+        "score": round(scored["score"], 2),
+        "breakdown": {k: round(v, 2) for k, v in scored["breakdown"].items()},
+        "opportunity_cost": round(scored["detail"]["opportunity"], 2),
+        "headroom_price": round(scored["detail"]["headroom_price"], 4),
+    }
+
 
 @router.post("/recommend")
-def recommend():
-    return load_mock("recommend.json")
+def recommend(request: RecommendRequest):
+    # Until /nessie/sync lands (M3) there are no LinkedAccount rows to read, so
+    # this scores the seeded demo wallet. Swapping in adapter.build_wallet(...)
+    # with real rows is the only change needed here.
+    cards, state = adapter.demo_wallet(protection_mode=request.protection_mode)
+
+    category = request.category or categorize(request.merchant)
+    result = engine.rank(state, category, request.amount, cards)
+
+    ranked = [
+        _card_payload(card, state, request.amount) for card in result["all_cards"]
+    ]
+
+    disqualified = [
+        {
+            "linked_account_id": state["cards"][d["card"]].get("linked_account_id"),
+            "display_name": d["card_name"],
+            "reason": d["reason"],
+        }
+        for d in result["disqualified"]
+    ]
+
+    if not ranked:
+        # Nothing usable -- say so plainly rather than failing silently
+        # (docs/PLAN.md §7 edge cases). The fixture keeps the shape stable.
+        payload = load_mock("recommend.json")
+        payload.update(
+            {
+                "merchant": request.merchant,
+                "amount": request.amount,
+                "category": category,
+                "recommendation": None,
+                "ranked": [],
+                "disqualified": disqualified,
+            }
+        )
+        return payload
+
+    return {
+        "merchant": request.merchant,
+        "amount": request.amount,
+        "category": category,
+        "recommendation": ranked[0],
+        "runner_up": ranked[1] if len(ranked) > 1 else None,
+        "ranked": ranked,
+        "disqualified": disqualified,
+        "audio_url": AUDIO_PLACEHOLDER,
+    }
