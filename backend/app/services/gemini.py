@@ -32,7 +32,9 @@ from app.config import GEMINI_API_KEY
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# gemini-2.5-* returns 404 "no longer available to new users"; the API
+# itself points at the 3.x line. Override with GEMINI_MODEL.
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 TIMEOUT_SECONDS = 25.0
 
@@ -62,6 +64,10 @@ change; the JSON is current and you are not.
 - If the user asks something the JSON cannot answer, say you do not have that \
 information. Refusing is correct behaviour, not a failure.
 - The ranking is already decided. Report it; do not re-argue it.
+- "wallet" lists every card the user holds. It is never empty unless they have \
+linked none. An empty "cards" with "ranking_available": false means the purchase \
+amount is not known yet -- ask for it. It does NOT mean they have no cards, and \
+you must never tell them they have none when "wallet" is populated.
 - If the user changes what they are buying (a different store, amount, or \
 category), put the change in purchase_patch. Leave it null otherwise.
 - Two or three sentences, conversational, no bullet points, no markdown.
@@ -134,6 +140,9 @@ def allowed_figures(context: dict) -> set[str]:
         allowed.add(_trim("%.1f" % number) + "%" if percent else "$" + _trim("%.0f" % number))
 
     add(context["purchase"]["amount"])
+    for card in context.get("wallet", []):
+        add(card.get("credit_limit"))
+        add(card.get("current_balance"))
     for card in context["cards"]:
         add(card.get("estimated_value"))
         add(card.get("available"))
@@ -197,6 +206,19 @@ def translate(message: str, context: dict, history: list[dict]) -> dict | None:
         },
     }
 
+    body = _post(payload)
+    if body is None:
+        return None
+    try:
+        text = body["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(text)
+    except (KeyError, IndexError, ValueError):
+        logger.warning("Gemini returned an unreadable body")
+        return None
+
+
+def _post(payload: dict) -> dict | None:
+    """POST to Gemini, retrying the transient statuses. None on failure."""
     last_error: Exception | None = None
     for attempt in range(MAX_ATTEMPTS):
         try:
@@ -213,9 +235,7 @@ def translate(message: str, context: dict, history: list[dict]) -> dict | None:
                     response=response,
                 )
             response.raise_for_status()
-            body = response.json()
-            text = body["candidates"][0]["content"]["parts"][0]["text"]
-            return json.loads(text)
+            return response.json()
         except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             last_error = exc
             if attempt + 1 < MAX_ATTEMPTS:

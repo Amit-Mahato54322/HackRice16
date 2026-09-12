@@ -1,5 +1,6 @@
 import { money } from "../domain/models.ts";
 import type { Category, Purchase } from "../domain/models";
+import { cardArt } from "../components/card-art";
 import type {
   CardOption,
   CreditPickServices,
@@ -15,11 +16,6 @@ const BASE_URL = (
 ).replace(/\/$/, "");
 
 const REQUEST_TIMEOUT_MS = 15_000;
-
-// The backend has no colour concept -- it returns reward data, not brand
-// styling. Assigned here by position so a card keeps the same colour between
-// renders.
-const CARD_COLORS = ["#145138", "#1C5942", "#225D44", "#164632"];
 
 /** Frontend categories are display strings; the engine's are lowercase keys. */
 const TO_ENGINE: Record<Category, string> = {
@@ -74,6 +70,8 @@ async function request<T>(
 
 type DashboardCard = {
   id: number;
+  vectormint_card_id?: string | null;
+  card_art_url?: string | null;
   nessie_account_id: string;
   official_name: string;
   credit_limit: number;
@@ -121,12 +119,20 @@ function toWalletCard(card: DashboardCard, index: number): WalletCard {
     limit,
     balance: card.current_balance ?? 0,
     reward: "cashback",
-    color: CARD_COLORS[index % CARD_COLORS.length],
+    // The issuer's own palette, so a Chase card reads as a Chase card.
+    color: cardArt(
+      card.vectormint_card_id ?? undefined,
+      card.card_issuer ?? undefined,
+      index,
+    ).background,
     rewardSummary: card.card_display_name
       ? `${card.card_issuer ?? "Card"} rewards`
       : "Not configured",
     available: card.amount_remaining ?? 0,
     utilization: card.utilization_pct ?? 0,
+    productId: card.vectormint_card_id ?? undefined,
+    issuer: card.card_issuer ?? undefined,
+    artUrl: card.card_art_url ?? undefined,
   };
 }
 
@@ -141,7 +147,7 @@ function placeholderCard(scored: ScoredCard, index: number): WalletCard {
     limit,
     balance,
     reward: "cashback",
-    color: CARD_COLORS[index % CARD_COLORS.length],
+    color: cardArt(scored.card_id, undefined, index).background,
     rewardSummary: scored.why,
     available: limit - balance,
     utilization: limit ? (balance / limit) * 100 : 0,

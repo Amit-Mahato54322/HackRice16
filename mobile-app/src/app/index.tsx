@@ -99,11 +99,12 @@ export default function HomeScreen() {
                   alignItems: "flex-start",
                 }}
               >
-                {cards.map((card) => (
+                {cards.map((card, index) => (
                   <WalletCard
                     key={card.id}
                     card={card}
                     width={cardWidth}
+                    index={index}
                     onPress={() => setSelected(card)}
                   />
                 ))}
