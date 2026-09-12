@@ -30,11 +30,9 @@ class RecommendRequest(BaseModel):
     merchant: str = Field(..., examples=["HEB"])
     amount: float = Field(..., gt=0, examples=[80.0])
     # Nessie's merchant catalog supplies this during the real pipeline; it
+    
     # overrides the keyword map when present (docs/PLAN.md §7 edge cases).
     category: str | None = None
-    # "Buying a house in 12 months" -- raises the price of a FICO point enough
-    # that the engine will refuse cash back to protect the score.
-    protection_mode: bool = False
 
 
 def _card_payload(scored, state, amount):
@@ -65,7 +63,7 @@ def recommend(request: RecommendRequest):
     # Until /nessie/sync lands (M3) there are no LinkedAccount rows to read, so
     # this scores the seeded demo wallet. Swapping in adapter.build_wallet(...)
     # with real rows is the only change needed here.
-    cards, state = adapter.demo_wallet(protection_mode=request.protection_mode)
+    cards, state = adapter.demo_wallet()
 
     # Credit limits are user-entered (PUT /cards/{card}/limit) because no API
     # in the stack publishes them. Anything entered overrides the seeded value.
