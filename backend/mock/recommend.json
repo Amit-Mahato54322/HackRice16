@@ -8,8 +8,7 @@
     "reward_rate": 0.04,
     "estimated_value": 3.60,
     "projected_utilization": 0.22,
-    "utilization_flag": false,
-    "why": "4x points on groceries, ~$3.60 value. Utilization would be 22%, below your 30% threshold."
+    "utilization_flag": false
   },
   "ranked": [
     {
@@ -27,5 +26,11 @@
       "utilization_flag": false
     }
   ],
-  "audio_url": "/mock/recommend-audio-placeholder"
+  "voice": {
+    "transcript": "4x points on groceries, ~$3.60 value. Utilization would be 22%, below your 30% threshold.",
+    "audio": {
+      "url": "/mock/recommend-audio-placeholder.mp3",
+      "mimeType": "audio/mpeg"
+    }
+  }
 }

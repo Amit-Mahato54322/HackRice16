@@ -1,20 +1,30 @@
 """Recommend route.
 
-Wraps the scoring engine (app/scoring/engine.py). The response keeps every
-field of the committed M1 fixture with its original meaning, so screens built
-against backend/mock/recommend.json keep working; the scoring detail is added
-alongside. See docs/PLAN.md §7.
+The recommendation itself (`recommendation`, `ranked`) is still the frozen
+M1 mock — the real scoring engine lands in M5/M7 (see docs/PLAN.md).
 
-Gemini audio extraction (M6) and ElevenLabs audio (M8) still land later; this
-route currently takes merchant and amount as JSON.
+M8: the `voice` field is real. It calls ElevenLabs with the recommendation's
+transcript and returns audio, shaped as
+`{ transcript, audio: { url, mimeType } }` to match mobile-app's
+VoiceOutput contract (mobile-app/src/services/contracts.ts) directly.
+
+Falls back to the mock's placeholder audio if ELEVENLABS_API_KEY isn't set,
+or if the ElevenLabs call fails, so /recommend never hard-depends on a
+working vendor call.
 """
+
+import logging
+import uuid
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.config import ELEVENLABS_API_KEY
 from app.mock import load_mock
-from app.scoring import adapter, engine, limits
-from app.scoring.categorize import categorize
+from app.services.elevenlabs import synthesize_speech
+from app.static_files import save_audio
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["recommend"])
 
@@ -23,91 +33,29 @@ router = APIRouter(tags=["recommend"])
 # the engine's risk term rather than flagging it.
 UTILIZATION_FLAG_THRESHOLD = 0.30
 
-AUDIO_PLACEHOLDER = "/mock/recommend-audio-placeholder"
+def _build_voice(transcript: str, mock_audio: dict) -> dict:
+    if not ELEVENLABS_API_KEY:
+        return {"transcript": transcript, "audio": mock_audio}
 
-
-class RecommendRequest(BaseModel):
-    merchant: str = Field(..., examples=["HEB"])
-    amount: float = Field(..., gt=0, examples=[80.0])
-    # Nessie's merchant catalog supplies this during the real pipeline; it
-    
-    # overrides the keyword map when present (docs/PLAN.md §7 edge cases).
-    category: str | None = None
-
-
-def _card_payload(scored, state, amount):
-    """One ranked card, in the M1 contract's shape plus the scoring detail."""
-    card_state = state["cards"][scored["card"]]
-    limit = card_state.get("limit") or 0.0
-    projected = (
-        (card_state.get("balance", 0.0) + amount) / limit if limit > 0 else 0.0
-    )
-
-    return {
-        # --- M1 contract fields, unchanged ---
-        "linked_account_id": card_state.get("linked_account_id"),
-        "display_name": scored["card_name"],
-        "reward_rate": scored["reward_rate"],
-        "estimated_value": round(scored["estimated_value"], 2),
-        "projected_utilization": round(projected, 4),
-        "utilization_flag": projected > UTILIZATION_FLAG_THRESHOLD,
-        "why": scored["why"],
-        # --- added: the scoring detail behind the ranking ---
-        "score": round(scored["score"], 2),
-        "breakdown": {k: round(v, 2) for k, v in scored["breakdown"].items()},
-    }
+    try:
+        audio_bytes = synthesize_speech(transcript)
+        url = save_audio(f"{uuid.uuid4()}.mp3", audio_bytes)
+        return {"transcript": transcript, "audio": {"url": url, "mimeType": "audio/mpeg"}}
+    except Exception:
+        logger.exception("ElevenLabs synthesis failed, falling back to mock audio")
+        return {"transcript": transcript, "audio": mock_audio}
 
 
 @router.post("/recommend")
-def recommend(request: RecommendRequest):
-    # Until /nessie/sync lands (M3) there are no LinkedAccount rows to read, so
-    # this scores the seeded demo wallet. Swapping in adapter.build_wallet(...)
-    # with real rows is the only change needed here.
-    cards, state = adapter.demo_wallet()
-
-    # Credit limits are user-entered (PUT /cards/{card}/limit) because no API
-    # in the stack publishes them. Anything entered overrides the seeded value.
-    limits.apply(state)
-
-    category = request.category or categorize(request.merchant)
-    result = engine.rank(state, category, request.amount, cards)
-
-    ranked = [
-        _card_payload(card, state, request.amount) for card in result["all_cards"]
-    ]
-
-    disqualified = [
-        {
-            "linked_account_id": state["cards"][d["card"]].get("linked_account_id"),
-            "display_name": d["card_name"],
-            "reason": d["reason"],
-        }
-        for d in result["disqualified"]
-    ]
-
-    if not ranked:
-        # Nothing usable -- say so plainly rather than failing silently
-        # (docs/PLAN.md §7 edge cases). The fixture keeps the shape stable.
-        payload = load_mock("recommend.json")
-        payload.update(
-            {
-                "merchant": request.merchant,
-                "amount": request.amount,
-                "category": category,
-                "recommendation": None,
-                "ranked": [],
-                "disqualified": disqualified,
-            }
-        )
-        return payload
+def recommend():
+    fixture = load_mock("recommend.json")
+    voice = _build_voice(fixture["voice"]["transcript"], fixture["voice"]["audio"])
 
     return {
-        "merchant": request.merchant,
-        "amount": request.amount,
-        "category": category,
-        "recommendation": ranked[0],
-        "runner_up": ranked[1] if len(ranked) > 1 else None,
-        "ranked": ranked,
-        "disqualified": disqualified,
-        "audio_url": AUDIO_PLACEHOLDER,
+        "merchant": fixture["merchant"],
+        "amount": fixture["amount"],
+        "category": fixture["category"],
+        "recommendation": fixture["recommendation"],
+        "ranked": fixture["ranked"],
+        "voice": voice,
     }
