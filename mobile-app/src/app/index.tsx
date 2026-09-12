@@ -2,7 +2,6 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Platform,
   Pressable,
   ScrollView,
@@ -13,7 +12,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Badge,
-  CardRow,
   CardVisual,
   Copy,
   Icon,
@@ -23,17 +21,19 @@ import {
   TextAction,
 } from "@/components/creditpick";
 import { money } from "@/domain/models";
-import type { WalletCard } from "@/services/contracts";
+import type { WalletCard as WalletCardData } from "@/services/contracts";
 import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
+import { WalletCard } from "@/components/wallet-card";
 
 export default function HomeScreen() {
   const { wallet, walletError, reloadWallet } = useCreditPick();
-  const { fontScale, height } = useWindowDimensions();
-  const accessibleScroll = fontScale > 1.2 || height < 650;
+  const { fontScale, height, width } = useWindowDimensions();
+  const cardWidth = Math.min(Math.min(width, 580) - 64, 360);
+  const accessibleScroll = fontScale > 1.2 || height < 760;
   const HomeContainer = accessibleScroll ? ScrollView : View;
   const [expanded, setExpanded] = useState(false);
-  const [selected, setSelected] = useState<WalletCard | null>(null);
+  const [selected, setSelected] = useState<WalletCardData | null>(null);
   const cards =
     wallet?.cards.filter(
       (card) => expanded || wallet.featuredCardIds.includes(card.id),
@@ -82,12 +82,7 @@ export default function HomeScreen() {
               <Copy style={s.link}>{expanded ? "Show less" : "View all"}</Copy>
             </Pressable>
           </View>
-          <View
-            style={[
-              styles.cardList,
-              accessibleScroll && { flex: 0, height: expanded ? 420 : 230 },
-            ]}
-          >
+          <View style={styles.cardList}>
             {walletError ? (
               <Panel>
                 <Copy accessibilityRole="alert">{walletError}</Copy>
@@ -98,46 +93,38 @@ export default function HomeScreen() {
                 color={theme.colors.accent}
                 accessibilityLabel="Loading cards"
               />
-            ) : accessibleScroll ? (
+            ) : (
               <ScrollView
-                nestedScrollEnabled
-                contentContainerStyle={{ paddingHorizontal: 14 }}
+                key={`${expanded}-${cardWidth}`}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={cardWidth + 14}
+                decelerationRate="fast"
+                disableIntervalMomentum
+                contentContainerStyle={{
+                  gap: 14,
+                  paddingRight: Math.min(width, 580) - 32 - cardWidth,
+                  alignItems: "flex-start",
+                }}
               >
-                {cards.map((card, index) => (
-                  <View key={card.id}>
-                    {index > 0 && <View style={styles.separator} />}
-                    <CardRow
-                      card={card}
-                      prominent
-                      onPress={() => setSelected(card)}
-                    />
-                  </View>
+                {cards.map((card) => (
+                  <WalletCard
+                    key={card.id}
+                    card={card}
+                    width={cardWidth}
+                    onPress={() => setSelected(card)}
+                  />
                 ))}
                 {!cards.length && (
                   <Copy style={s.small}>No cards to display.</Copy>
                 )}
               </ScrollView>
-            ) : (
-              <FlatList
-                nestedScrollEnabled
-                data={cards}
-                keyExtractor={(card) => card.id}
-                showsVerticalScrollIndicator={expanded}
-                contentContainerStyle={{ paddingHorizontal: 14 }}
-                renderItem={({ item }) => (
-                  <CardRow
-                    card={item}
-                    prominent
-                    onPress={() => setSelected(item)}
-                  />
-                )}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-                ListEmptyComponent={
-                  <Copy style={s.small}>No cards to display.</Copy>
-                }
-              />
             )}
           </View>
+          <Copy style={[s.small, { paddingTop: 10, paddingHorizontal: 8 }]}>
+            Swipe left or right · Tap a card for details
+          </Copy>
+          <View style={{ flex: 1 }} />
           <View style={styles.voiceDock}>
             <Copy style={styles.askTitle}>What are you buying?</Copy>
             <Copy style={styles.supporting}>Tell us the store and amount.</Copy>
@@ -235,19 +222,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   sectionTitle: { fontSize: 23, lineHeight: 30, fontWeight: "600" },
-  cardList: {
-    flex: 1,
-    minHeight: 100,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    overflow: "hidden",
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: theme.colors.border,
-  },
+  cardList: { flexShrink: 0 },
   voiceDock: { alignItems: "center", paddingTop: 20, gap: 4 },
   askTitle: { fontSize: 20, lineHeight: 27, fontWeight: "600" },
   controls: {

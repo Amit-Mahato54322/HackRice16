@@ -34,9 +34,9 @@ Voice output is a transcript plus optional backend audio URL/MIME type. Implemen
 
 ## Layout
 
-The native stack contains Home, Conversation, and Recommendation; there is no tab bar, Wallet screen, or Settings screen. Home shows featured cards and expands the full list inline. Card details use a sheet. The microphone stays centered near the bottom with a conversation shortcut on its right. Conversation has an explicit Home back action and keeps the composer outside its scrollable keyboard-aware content. Successful user messages and assistant replies are stored in the provider for the session; returning Home preserves them, and starting another question resets them.
+The native stack contains Home, Conversation, and Recommendation; there is no tab bar, Wallet screen, or Settings screen. Home shows featured cards in a snapping horizontal carousel and expands all cards inline. The reusable WalletCard uses standard 1.586:1 credit-card proportions at normal text sizes and grows for accessibility text. Card details use a sheet. The microphone stays centered near the bottom with a conversation shortcut on its right. Conversation has an explicit Home back action and keeps the composer outside its scrollable keyboard-aware content. Successful user messages and assistant replies are stored in the provider for the session; returning Home preserves them, and starting another question resets them.
 
-Very short screens, larger accessibility text, the keyboard, and long conversation histories retain scrolling to keep content reachable. At normal sizes the Home card list scrolls internally while voice controls remain anchored. The wallet service contract remains the card-data boundary, despite removal of the Wallet UI. The demo threshold is fixed at 30%; the removed Settings UI no longer exposes a threshold setter. Visual verification remains with the user.
+Very short screens, larger accessibility text, the keyboard, and long conversation histories retain scrolling to keep content reachable. At normal sizes the Home horizontal card carousel scrolls internally while voice controls remain anchored. The wallet service contract remains the card-data boundary, despite removal of the Wallet UI. The demo threshold is fixed at 30%; the removed Settings UI no longer exposes a threshold setter. Visual verification remains with the user.
 
 ## Tests
 
