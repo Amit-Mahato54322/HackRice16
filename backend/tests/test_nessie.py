@@ -1,3 +1,4 @@
+
 """
 Nessie API exploration test.
 Investigates whether credit_limit can be stored/retrieved on Credit Card accounts.
@@ -7,14 +8,19 @@ Run: python -m tests.test_nessie   (from backend/)
 """
 
 import json
+import os
+import sys
 import urllib.request
 import urllib.error
 
-API_KEY = "4158d7697b5d532f937d774f8c5c7c92"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.config import NESSIE_API_KEY as API_KEY, NESSIE_CUSTOMER_ID as CUSTOMER_ID
+
 BASE_URL = "https://api.nessieisreal.com"
 
-# John's existing customer + accounts from the earlier test
-CUSTOMER_ID = "b9eaa50f-d8e7-440b-9c9a-d10d13d15244"
+if not API_KEY or not CUSTOMER_ID:
+    sys.exit("NESSIE_API_KEY / NESSIE_CUSTOMER_ID not set in backend/.env")
 ACCOUNT_IDS = {
     "Chase Sapphire Preferred":       "54022219-396b-4e5b-98ec-50ae376e1c70",
     "Capital One Venture":            "636963f1-4c73-4f76-8a9c-210c95acbbee",
