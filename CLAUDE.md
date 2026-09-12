@@ -25,9 +25,9 @@ A mobile app that recommends the best credit card to use for a purchase in real 
 - Cache VectorMint responses in Postgres at card-mapping time — don't hit VectorMint live on every recommendation call.
 
 ## Current Status
-- Done: brainstorm + architecture locked in
-- In progress: —
-- Next: M1 — scaffold backend + mobile skeleton (see docs/PLAN.md)
+- Done: brainstorm + architecture locked in; M1 backend scaffold (models, db/config, mock fixtures, auth/dashboard/cards/recommend routers serving fixtures, nessie router stubbed 501, CORS + /health) — smoke-tested end to end with no Postgres needed
+- In progress: M1 mobile skeleton (Expo screens) — not yet started
+- Next: finish M1 frontend, then M2 (see docs/PLAN.md)
 
 ## Full Plan
 See `docs/PLAN.md` for architecture, data model, scoring formula, edge cases, and the full milestone list.

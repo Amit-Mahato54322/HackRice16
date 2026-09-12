@@ -1,8 +1,26 @@
-"""FastAPI app entrypoint. Scaffold only — see docs/PLAN.md for M1."""
+"""FastAPI app entrypoint."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.routers import auth, cards, dashboard, nessie, recommend
 
 app = FastAPI(title="CreditPick API")
+
+# Permissive CORS from the first commit — Expo on a phone hits a laptop dev
+# server with no detour (see docs/PLAN.md). Tighten before any real deploy.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
+app.include_router(dashboard.router)
+app.include_router(cards.router)
+app.include_router(nessie.router)
+app.include_router(recommend.router)
 
 
 @app.get("/health")

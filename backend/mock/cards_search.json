@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "vectormint_card_id": "amex-gold",
+      "display_name": "Amex Gold",
+      "issuer": "American Express",
+      "art_url": "https://example.com/cards/amex-gold.png"
+    },
+    {
+      "vectormint_card_id": "chase-sapphire-preferred",
+      "display_name": "Chase Sapphire Preferred",
+      "issuer": "Chase",
+      "art_url": "https://example.com/cards/csp.png"
+    },
+    {
+      "vectormint_card_id": "capital-one-savorone",
+      "display_name": "Capital One SavorOne",
+      "issuer": "Capital One",
+      "art_url": "https://example.com/cards/savorone.png"
+    }
+  ]
+}

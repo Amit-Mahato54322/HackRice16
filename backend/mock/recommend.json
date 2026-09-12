@@ -1,0 +1,31 @@
+{
+  "merchant": "Whole Foods",
+  "amount": 90.0,
+  "category": "groceries",
+  "recommendation": {
+    "linked_account_id": 1,
+    "display_name": "Amex Gold",
+    "reward_rate": 0.04,
+    "estimated_value": 3.60,
+    "projected_utilization": 0.22,
+    "utilization_flag": false,
+    "why": "4x points on groceries, ~$3.60 value. Utilization would be 22%, below your 30% threshold."
+  },
+  "ranked": [
+    {
+      "linked_account_id": 1,
+      "display_name": "Amex Gold",
+      "estimated_value": 3.60,
+      "projected_utilization": 0.22,
+      "utilization_flag": false
+    },
+    {
+      "linked_account_id": 2,
+      "display_name": "Chase Sapphire Preferred",
+      "estimated_value": 0.90,
+      "projected_utilization": 0.19,
+      "utilization_flag": false
+    }
+  ],
+  "audio_url": "/mock/recommend-audio-placeholder"
+}
