@@ -8,11 +8,11 @@ import {
   s,
   TextAction,
   WalletSummary,
-} from "@/components/cardcue";
-import { useCardCue } from "@/state/cardcue-provider";
+} from "@/components/creditpick";
+import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 export default function HomeScreen() {
-  const { reset, wallet } = useCardCue();
+  const { reset, wallet } = useCreditPick();
   const { height } = useWindowDimensions();
   const small = height < 850;
   const comparisonCards =
@@ -29,7 +29,7 @@ export default function HomeScreen() {
     <Screen fit>
       <View style={s.row}>
         <Copy style={styles.wordmark}>
-          CardCue<Copy style={{ color: theme.colors.greenLight }}>.</Copy>
+          CreditPick<Copy style={{ color: theme.colors.greenLight }}>.</Copy>
         </Copy>
         <Pressable
           accessibilityRole="button"

@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Icon, IconName } from "@/components/cardcue";
+import { Icon, IconName } from "@/components/creditpick";
 import { theme } from "@/theme";
 export default function TabLayout() {
   return (

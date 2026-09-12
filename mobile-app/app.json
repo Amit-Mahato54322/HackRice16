@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "CardCue",
-    "slug": "cardcue",
+    "name": "CreditPick",
+    "slug": "creditpick",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "cardcue",
+    "scheme": "creditpick",
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon",

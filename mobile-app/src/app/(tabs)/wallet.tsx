@@ -12,14 +12,14 @@ import {
   Sheet,
   s,
   WalletSummary,
-} from "@/components/cardcue";
+} from "@/components/creditpick";
 import { money } from "@/domain/models";
 import type { WalletCard } from "@/services/contracts";
-import { useCardCue } from "@/state/cardcue-provider";
+import { useCreditPick } from "@/state/creditpick-provider";
 
 export default function WalletScreen() {
   const params = useLocalSearchParams<{ card?: string }>();
-  const { wallet } = useCardCue();
+  const { wallet } = useCreditPick();
   const cards = wallet?.cards ?? [];
   const [selected, setSelected] = useState<WalletCard | null>(null);
   useEffect(() => {

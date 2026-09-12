@@ -64,7 +64,7 @@ export type VoiceSession = {
   finish: () => Promise<void>;
   close: () => void;
 };
-export interface CardCueServices {
+export interface CreditPickServices {
   mode: "demo" | "live";
   initialPurchase: Purchase;
   maxPurchaseAmount: number;

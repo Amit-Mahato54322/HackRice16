@@ -8,12 +8,12 @@ import {
   Panel,
   Screen,
   s,
-} from "@/components/cardcue";
-import { useCardCue } from "@/state/cardcue-provider";
+} from "@/components/creditpick";
+import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 export default function SettingsScreen() {
-  const { threshold, setThreshold, reset } = useCardCue();
+  const { threshold, setThreshold, reset } = useCreditPick();
   return (
     <Screen>
       <Header title="Settings" />
@@ -84,7 +84,7 @@ export default function SettingsScreen() {
         }}
       />
       <Copy style={[s.small, { textAlign: "center" }]}>
-        CardCue · A little clarity before you pay.
+        CreditPick · A little clarity before you pay.
       </Copy>
     </Screen>
   );

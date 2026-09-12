@@ -1,9 +1,9 @@
 import * as Speech from "expo-speech";
-import type { CardCueServices } from "./contracts";
+import type { CreditPickServices } from "./contracts";
 
 // Replace this adapter with native URL playback when the backend returns audio.
 // The screen always retains the transcript if playback is unavailable.
-export const devicePlayback: CardCueServices["playback"] = {
+export const devicePlayback: CreditPickServices["playback"] = {
   stop: () => Speech.stop(),
   async play(output, signal) {
     if (signal.aborted) return;

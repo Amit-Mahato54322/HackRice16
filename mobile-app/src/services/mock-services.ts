@@ -7,7 +7,7 @@ import {
   wallet,
 } from "../data/demo.ts";
 import { money, validateAmount } from "../domain/models.ts";
-import type { CardCueServices, CardOption, WalletCard } from "./contracts";
+import type { CreditPickServices, CardOption, WalletCard } from "./contracts";
 import type { Purchase } from "../domain/models";
 
 export function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -51,8 +51,8 @@ function option(card: WalletCard, purchase: Purchase): CardOption {
 }
 // Mock business rules stay here. Screens never rank cards or generate speech.
 export function createMockServices(
-  playback: CardCueServices["playback"],
-): CardCueServices {
+  playback: CreditPickServices["playback"],
+): CreditPickServices {
   return {
     mode: "demo",
     initialPurchase,

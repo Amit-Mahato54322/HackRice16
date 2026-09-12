@@ -1,13 +1,13 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { CardCueProvider } from "@/state/cardcue-provider";
+import { CreditPickProvider } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <CardCueProvider>
+      <CreditPickProvider>
         <StatusBar style="dark" />
         <Stack
           screenOptions={{
@@ -19,7 +19,7 @@ export default function RootLayout() {
           <Stack.Screen name="conversation" />
           <Stack.Screen name="recommendation" />
         </Stack>
-      </CardCueProvider>
+      </CreditPickProvider>
     </SafeAreaProvider>
   );
 }

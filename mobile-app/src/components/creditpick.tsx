@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CreditCard, money } from "@/domain/models";
 import type { WalletCard } from "@/services/contracts";
-import { useCardCue } from "@/state/cardcue-provider";
+import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 const c = theme.colors;
@@ -327,7 +327,7 @@ export function WalletSummary({
   compact?: boolean;
   dense?: boolean;
 }) {
-  const { threshold, wallet, walletError, reloadWallet } = useCardCue();
+  const { threshold, wallet, walletError, reloadWallet } = useCreditPick();
   if (walletError)
     return (
       <Panel>
