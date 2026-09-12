@@ -9,6 +9,7 @@ So the worst case is a plainer sentence, never a wrong one.
 """
 
 import logging
+import re
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -132,6 +133,67 @@ def _patch(raw: dict | None) -> dict | None:
     return patch or None
 
 
+# "$120", "120 dollars", "120 bucks".
+_AMOUNT = re.compile(
+    r"\$\s?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:dollars|bucks|usd)\b",
+    re.IGNORECASE,
+)
+# "at Whole Foods", "from HEB" -- stops at a comma or a trailing clause.
+# A bare number only counts when the sentence is clearly about spending:
+# "make it 600", "spend 45". Otherwise digits mean something else.
+_BARE_AMOUNT = re.compile(
+    r"\b(?:make it|spend|spending|for|about|around|costs?|it'?s)\s+"
+    r"(\d[\d,]*(?:\.\d{1,2})?)\b",
+    re.IGNORECASE,
+)
+_STORE = re.compile(
+    r"\b(?:at|from)\s+([A-Za-z][\w&'\-.]*(?:\s+[A-Za-z][\w&'\-.]*){0,2})",
+    re.IGNORECASE,
+)
+_STORE_STOPWORDS = {"the", "my", "a", "an", "least", "most", "home"}
+# Words that follow a store name rather than belonging to it: "at HEB for
+# groceries", "at United instead".
+_TRAILING = {
+    "for", "instead", "please", "today", "tonight", "now", "tomorrow", "and",
+    "with", "about", "around", "on", "in", "using", "to", "buying", "it",
+}
+
+
+def _local_patch(message: str) -> dict | None:
+    """Read the purchase straight out of the sentence, without an LLM.
+
+    Gemini does this better, but it is a flaky free tier and this is the only
+    way to enter a purchase by typing. A regex that handles "$120 at HEB" keeps
+    the app usable when the model is returning 503s.
+    """
+    patch: dict = {}
+
+    amount_match = _AMOUNT.search(message)
+    raw = None
+    if amount_match:
+        raw = amount_match.group(1) or amount_match.group(2)
+    else:
+        bare = _BARE_AMOUNT.search(message)
+        raw = bare.group(1) if bare else None
+    if raw:
+        try:
+            amount = float(raw.replace(",", ""))
+            if 0 < amount <= MAX_AMOUNT:
+                patch["amount"] = amount
+        except ValueError:
+            pass
+
+    store_match = _STORE.search(message)
+    if store_match:
+        words = store_match.group(1).strip(" .,").split()
+        while words and words[-1].lower() in _TRAILING:
+            words.pop()
+        if words and words[0].lower() not in _STORE_STOPWORDS:
+            patch["store"] = " ".join(words)
+
+    return patch or None
+
+
 def _patched(purchase: PurchaseIn, patch: dict) -> PurchaseIn:
     """The purchase as the user just redescribed it."""
     store = patch.get("store", purchase.store)
@@ -153,6 +215,9 @@ def conversation(request: ConversationRequest, db: Session = Depends(get_db)):
         [turn.model_dump() for turn in request.history],
     )
     patch = _patch(translated.get("purchase_patch") if translated else None)
+    # Gemini is the better extractor, but it is not always reachable.
+    if patch is None:
+        patch = _local_patch(request.message)
 
     # If they changed what they are buying, the answer is about the new
     # purchase -- so re-rank before judging the reply. Otherwise a perfectly

@@ -258,7 +258,9 @@ export function createHttpServices(
   let walletCards = new Map<string, WalletCard>();
 
   return {
-    initialPurchase: { store: "Whole Foods", category: "Groceries", amount: 90 },
+    // Empty on purpose: the user says what they are buying. Nothing is
+    // pre-filled, so no figure on screen was invented by us.
+    initialPurchase: { store: "", category: "Other", amount: 0 },
     maxPurchaseAmount: 2500,
 
     wallet: {

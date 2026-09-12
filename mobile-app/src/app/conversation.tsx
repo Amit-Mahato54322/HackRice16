@@ -21,6 +21,7 @@ import {
   Icon,
   IconButton,
   s,
+  TextAction,
 } from "@/components/creditpick";
 import { categories, money, Purchase, validateAmount } from "@/domain/models";
 import { useCreditPick } from "@/state/creditpick-provider";
@@ -35,9 +36,11 @@ export default function ConversationScreen() {
     flowId,
     updatePurchase,
     services,
+    reset,
     compare: requestComparison,
   } = useCreditPick();
-  const [listening, setListening] = useState(typing !== "1");
+  const ready = !!purchase.store.trim() && purchase.amount > 0;
+  const [listening, setListening] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState("");
@@ -71,7 +74,7 @@ export default function ConversationScreen() {
     setError("");
     setLoading(false);
     setSending(false);
-    setListening(typing !== "1");
+    setListening(false);
   }, [flowId, typing]);
   useEffect(() => {
     if (typing !== "1") return;
@@ -181,11 +184,20 @@ export default function ConversationScreen() {
       ]);
       setReply("");
       setMessage("");
-    } catch {
-      if (!pending.signal.aborted)
-        setReply("Message failed. Please try sending again.");
+    } catch (error) {
+      if (!pending.signal.aborted) {
+        setReply(
+          error instanceof Error && error.message
+            ? `Couldn't send that: ${error.message}`
+            : "Message failed. Please try sending again.",
+        );
+      }
     } finally {
-      if (!pending.signal.aborted) setSending(false);
+      // Clear the flag unless a newer send has already taken over. Keying
+      // this on `aborted` left `sending` stuck true after any cancellation,
+      // and every later send then returned early without making a request --
+      // a composer that looked alive but did nothing.
+      if (messageRequest.current === pending) setSending(false);
     }
   }
   async function compare() {
@@ -199,11 +211,17 @@ export default function ConversationScreen() {
     try {
       await requestComparison(pending.signal);
       if (!pending.signal.aborted) router.push("/recommendation");
-    } catch {
-      if (!pending.signal.aborted)
-        setReply("Could not compare your cards. Please try again.");
+    } catch (error) {
+      if (!pending.signal.aborted) {
+        setReply(
+          error instanceof Error && error.message
+            ? error.message
+            : "Could not compare your cards. Please try again.",
+        );
+      }
     } finally {
-      if (!pending.signal.aborted) setLoading(false);
+      // Same rule as send(): only the current request may clear the flag.
+      if (request.current === pending) setLoading(false);
     }
   }
   return (
@@ -227,13 +245,8 @@ export default function ConversationScreen() {
           contentContainerStyle={styles.content}
         >
           <View style={styles.voice}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Voice input is not connected yet. Type your purchase below."
-              onPress={() => {
-                setListening(false);
-                requestAnimationFrame(() => setListening(true));
-              }}
+            <View
+              accessibilityLabel="Voice input is not connected yet"
               style={styles.outerCircle}
             >
               <View style={styles.middleCircle}>
@@ -241,7 +254,7 @@ export default function ConversationScreen() {
                   <Icon name="mic" size={38} />
                 </View>
               </View>
-            </Pressable>
+            </View>
             <View style={styles.wave} accessible={false}>
               {[8, 15, 25, 12, 31, 20, 13, 26, 16, 8, 18].map((height, i) => (
                 <Animated.View
@@ -264,7 +277,7 @@ export default function ConversationScreen() {
               ))}
             </View>
             <Copy accessibilityLiveRegion="polite" style={s.bold}>
-              {listening ? "Listening…" : "Ready to compare"}
+              {ready ? "Ready to compare" : "Tell me what you're buying"}
             </Copy>
             <View
               style={[
@@ -278,14 +291,11 @@ export default function ConversationScreen() {
             </View>
           </View>
           <View style={{ gap: 12 }}>
-            <ChatBubble user>
-              I’m buying {purchase.category.toLowerCase()} at {purchase.store}.
+            <ChatBubble>
+              {ready
+                ? `${purchase.store} · ${money(purchase.amount, purchase.amount % 1 ? 2 : 0)} · ${purchase.category}. Compare when you're ready.`
+                : "What are you buying? Tell me the store and amount below, or tap a field to fill it in."}
             </ChatBubble>
-            <ChatBubble>About how much will you spend?</ChatBubble>
-            <ChatBubble user>
-              {money(purchase.amount, purchase.amount % 1 ? 2 : 0)}.
-            </ChatBubble>
-            <ChatBubble>Got it! Here’s what I heard:</ChatBubble>
           </View>
           {conversationMessages.map((entry, index) => (
             <ChatBubble key={index} user={entry.role === "user"}>
@@ -295,16 +305,26 @@ export default function ConversationScreen() {
           <View style={styles.chips}>
             {(
               [
-                { field: "store", icon: "map-pin", value: purchase.store },
+                {
+                  field: "store",
+                  icon: "map-pin",
+                  value: purchase.store || "Add store",
+                  filled: !!purchase.store.trim(),
+                },
                 {
                   field: "category",
                   icon: "shopping-bag",
                   value: purchase.category,
+                  filled: true,
                 },
                 {
                   field: "amount",
                   icon: "dollar-sign",
-                  value: money(purchase.amount, purchase.amount % 1 ? 2 : 0),
+                  value:
+                    purchase.amount > 0
+                      ? money(purchase.amount, purchase.amount % 1 ? 2 : 0)
+                      : "Add amount",
+                  filled: purchase.amount > 0,
                 },
               ] as const
             ).map((chip) => (
@@ -313,10 +333,17 @@ export default function ConversationScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Edit ${chip.field}: ${chip.value}`}
                 onPress={() => edit(chip.field)}
-                style={styles.chip}
+                style={[styles.chip, !chip.filled && styles.chipEmpty]}
               >
                 <Icon name={chip.icon} size={15} />
-                <Copy style={styles.chipText}>{chip.value}</Copy>
+                <Copy
+                  style={[
+                    styles.chipText,
+                    !chip.filled && { color: theme.colors.muted },
+                  ]}
+                >
+                  {chip.value}
+                </Copy>
                 <Icon name="edit-2" size={11} color={theme.colors.muted} />
               </Pressable>
             ))}
@@ -391,12 +418,21 @@ export default function ConversationScreen() {
           )}
           {!!reply && <ChatBubble>{reply}</ChatBubble>}
           {!editing && (
-            <Button
-              title={loading ? "Comparing your cards…" : "Compare my cards"}
-              icon="arrow-right"
-              loading={loading}
-              onPress={compare}
-            />
+            <View style={{ gap: 4 }}>
+              <Button
+                title={loading ? "Comparing your cards…" : "Compare my cards"}
+                icon="arrow-right"
+                loading={loading}
+                disabled={!ready}
+                onPress={compare}
+              />
+              {!ready && (
+                <Copy style={[s.small, { textAlign: "center" }]}>
+                  Add a store and an amount to compare.
+                </Copy>
+              )}
+              <TextAction title="Start over" onPress={reset} />
+            </View>
           )}
         </ScrollView>
         <View style={{ paddingHorizontal: 24 }}>
@@ -426,13 +462,12 @@ export default function ConversationScreen() {
             ) : (
               <IconButton
                 name="mic"
-                label="Voice input not connected"
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setListening(false);
-                  requestAnimationFrame(() => setListening(true));
-                }}
-                filled
+                label="Voice input is not connected yet. Type your purchase instead."
+                onPress={() =>
+                  setReply(
+                    "Voice input isn’t connected yet — type the store and amount, or tap a field above.",
+                  )
+                }
               />
             )}
           </View>
@@ -493,6 +528,7 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chipEmpty: { borderStyle: "dashed" },
   chip: {
     flexDirection: "row",
     alignItems: "center",

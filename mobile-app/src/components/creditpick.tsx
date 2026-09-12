@@ -51,23 +51,27 @@ export function Button({
   icon,
   loading = false,
   secondary = false,
+  disabled = false,
 }: {
   title: string;
   onPress: () => void;
   icon?: IconName;
   loading?: boolean;
   secondary?: boolean;
+  disabled?: boolean;
 }) {
+  const inactive = loading || disabled;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
-      accessibilityState={{ disabled: loading, busy: loading }}
-      disabled={loading}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
       onPress={onPress}
       style={({ pressed }) => [
         s.button,
         secondary && s.secondary,
+        disabled && s.buttonDisabled,
         pressed && s.pressed,
       ]}
     >
@@ -426,6 +430,7 @@ export const s = StyleSheet.create({
     lineHeight: 17,
     fontWeight: "600",
   },
+  buttonDisabled: { opacity: 0.45 },
   button: {
     minHeight: 56,
     borderRadius: 15,
