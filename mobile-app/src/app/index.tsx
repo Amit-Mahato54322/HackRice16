@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -61,7 +62,7 @@ export default function HomeScreen() {
               adjustsFontSizeToFit
               style={styles.wordmark}
             >
-              CreditPick.
+              CreditPick<Copy style={styles.brandDot}>.</Copy>
             </Copy>
             <View
               accessible
@@ -248,7 +249,12 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   wordmark: {
-    fontFamily: theme.fontFamily,
+    fontFamily: Platform.select({
+      ios: "Georgia",
+      android: "serif",
+      default: "Georgia",
+    }),
+    fontStyle: "italic",
     fontWeight: "700",
     fontSize: 44,
     lineHeight: 54,
@@ -283,7 +289,6 @@ const styles = StyleSheet.create({
   },
   intro: { gap: 8, paddingHorizontal: 8, paddingTop: 4, paddingBottom: 24 },
   brandDot: { fontSize: 42, lineHeight: 52, color: theme.colors.accent },
-  intro: { gap: 6, paddingHorizontal: 8, paddingTop: 12, paddingBottom: 20 },
   savedPanel: {
     flexDirection: "row",
     alignItems: "center",
@@ -291,8 +296,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   heading: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 28,
     fontWeight: "600",
     letterSpacing: -0.2,
     color: theme.colors.ink,
