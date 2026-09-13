@@ -8,6 +8,22 @@ Built for HackRice 16 (Finance track).
 
 ---
 
+## Demo
+
+[Watch the app demo](demo-assets/demo%20video%201.mp4) to see CreditPick in action.
+
+### Screenshots
+
+| Your cards | Voice input | Why this card |
+|---|---|---|
+| <img src="demo-assets/landing_page.PNG" alt="CreditPick home screen showing cards and the prompt to describe a purchase" width="240"> | <img src="demo-assets/voice_input.PNG" alt="Voice input screen listening for a purchase question" width="240"> | <img src="demo-assets/reason_to_suggest_this_card.PNG" alt="Recommendation explaining the reward, available credit, and projected utilization" width="240"> |
+
+| Card details | Compare cards |
+|---|---|
+| <img src="demo-assets/card_detail.PNG" alt="Card details showing balance, credit limit, and utilization" width="240"> | <img src="demo-assets/compare_cards.PNG" alt="Comparison of cards ranked by reward and projected utilization" width="240"> |
+
+---
+
 ## How it works
 
 ```
