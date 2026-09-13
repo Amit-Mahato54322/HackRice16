@@ -194,6 +194,7 @@ export function Screen({
         </View>
       ) : (
         <ScrollView
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={contentStyle}
         >
@@ -265,7 +266,13 @@ export function CardVisual({
       >
         <Image
           source={source}
-          style={{ width: "100%", height: "100%" }}
+          // A percentage height inside a minHeight-only parent (s.largeCard)
+          // is ambiguous for Yoga's native layout and was inflating to fill
+          // the whole screen on device (RN Web's CSS engine resolved the
+          // same styles fine, which is why this only showed up on phone).
+          // absoluteFillObject sizes against the parent's actual computed
+          // box instead.
+          style={StyleSheet.absoluteFill}
           resizeMode="cover"
           accessible={false}
         />

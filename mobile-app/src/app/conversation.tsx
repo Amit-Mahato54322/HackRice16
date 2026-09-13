@@ -2,6 +2,7 @@ import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Animated,
   Keyboard,
   KeyboardAvoidingView,
@@ -33,8 +34,29 @@ import { categories, money, Purchase, validateAmount } from "@/domain/models";
 import { useCreditPick } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
+// The backend chains several sequential calls for a voice turn (see
+// backend/app/routers/conversation.py: transcribe -> translate -> validate ->
+// ElevenLabs), which is why it takes 5-10s with nothing to look at. These
+// cycle on a timer -- there's no real progress signal from a single HTTP
+// response, just an honest guess at which step is likeliest to be running.
+const VOICE_STAGES = [
+  "Transcribing your recording…",
+  "Talking to Gemini…",
+  "Checking the numbers…",
+  "Generating your voice reply…",
+];
+const TEXT_STAGES = [
+  "Talking to Gemini…",
+  "Checking the numbers…",
+  "Generating your voice reply…",
+];
+const STAGE_INTERVAL_MS = 1600;
+
 export default function ConversationScreen() {
-  const { typing } = useLocalSearchParams<{ typing?: string }>();
+  const { typing, record } = useLocalSearchParams<{
+    typing?: string;
+    record?: string;
+  }>();
   const {
     purchase,
     conversationMessages,
@@ -59,6 +81,10 @@ export default function ConversationScreen() {
   const messageRequest = useRef<AbortController | null>(null);
   const playbackRequest = useRef<AbortController | null>(null);
   const [sending, setSending] = useState(false);
+  const [pendingKind, setPendingKind] = useState<"voice" | "text" | null>(
+    null,
+  );
+  const [stageIndex, setStageIndex] = useState(0);
   const wave = useRef(new Animated.Value(0)).current;
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   // Guards the async gap between tapping the mic and the recorder actually
@@ -107,6 +133,29 @@ export default function ConversationScreen() {
     const focus = setTimeout(() => composer.current?.focus(), 350);
     return () => clearTimeout(focus);
   }, [typing]);
+  // Tapping the mic on the home screen should start listening immediately
+  // instead of landing here and requiring a second tap.
+  useEffect(() => {
+    if (record !== "1") return;
+    const start = setTimeout(() => void toggleRecording(), 350);
+    return () => clearTimeout(start);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record]);
+  // Neither backend call reports progress -- this just cycles an honest
+  // guess at which sequential step (see VOICE_STAGES above) is likeliest to
+  // be running, so the wait isn't a blank screen.
+  useEffect(() => {
+    if (!sending || !pendingKind) {
+      setStageIndex(0);
+      return;
+    }
+    setStageIndex(0);
+    const stages = pendingKind === "voice" ? VOICE_STAGES : TEXT_STAGES;
+    const id = setInterval(() => {
+      setStageIndex((index) => Math.min(index + 1, stages.length - 1));
+    }, STAGE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [sending, pendingKind]);
   // `listening` means "actively recording" -- the wave animation runs for as
   // long as capture is on; actually reading the microphone happens in
   // toggleRecording below, not here, since starting/stopping the recorder
@@ -170,6 +219,7 @@ export default function ConversationScreen() {
     const pending = new AbortController();
     messageRequest.current = pending;
     setSending(true);
+    setPendingKind("text");
     abandonRecording();
     try {
       const turn = await services.conversation.sendText(
@@ -204,7 +254,10 @@ export default function ConversationScreen() {
       // this on `aborted` left `sending` stuck true after any cancellation,
       // and every later send then returned early without making a request --
       // a composer that looked alive but did nothing.
-      if (messageRequest.current === pending) setSending(false);
+      if (messageRequest.current === pending) {
+        setSending(false);
+        setPendingKind(null);
+      }
     }
   }
   // Tap to start, tap again to stop and send -- single-shot, no partial
@@ -223,6 +276,7 @@ export default function ConversationScreen() {
       const pending = new AbortController();
       messageRequest.current = pending;
       setSending(true);
+      setPendingKind("voice");
       try {
         const turn = await services.conversation.sendVoice(
           uri,
@@ -252,7 +306,10 @@ export default function ConversationScreen() {
           );
         }
       } finally {
-        if (messageRequest.current === pending) setSending(false);
+        if (messageRequest.current === pending) {
+          setSending(false);
+          setPendingKind(null);
+        }
       }
       return;
     }
@@ -515,7 +572,17 @@ export default function ConversationScreen() {
               )}
             </View>
           )}
-          {!!reply && <ChatBubble>{reply}</ChatBubble>}
+          {sending && pendingKind && (
+            <View style={[s.bubble, styles.statusBubble]}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Copy style={{ fontSize: 15, lineHeight: 22 }}>
+                {(pendingKind === "voice" ? VOICE_STAGES : TEXT_STAGES)[
+                  stageIndex
+                ]}
+              </Copy>
+            </View>
+          )}
+          {!sending && !!reply && <ChatBubble>{reply}</ChatBubble>}
           {!editing && (
             <View style={{ gap: 4 }}>
               <Button
@@ -573,6 +640,7 @@ export default function ConversationScreen() {
   );
 }
 const styles = StyleSheet.create({
+  statusBubble: { flexDirection: "row", alignItems: "center", gap: 10 },
   header: {
     paddingHorizontal: 16,
     paddingTop: 8,

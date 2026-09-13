@@ -36,10 +36,13 @@ export default function HomeScreen() {
   const [selected, setSelected] = useState<WalletCardData | null>(null);
   const [showAddCard, setShowAddCard] = useState(false);
   const cards = wallet?.cards ?? [];
-  function openConversation(typing: boolean) {
+  function openConversation(mode: "type" | "record") {
     router.push({
       pathname: "/conversation",
-      params: { typing: typing ? "1" : "0" },
+      params: {
+        typing: mode === "type" ? "1" : "0",
+        record: mode === "record" ? "1" : "0",
+      },
     });
   }
   return (
@@ -125,8 +128,8 @@ export default function HomeScreen() {
               <View style={styles.sideSlot} />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Open the conversation"
-                onPress={() => openConversation(false)}
+                accessibilityLabel="Start speaking"
+                onPress={() => openConversation("record")}
                 style={({ pressed }) => [
                   styles.microphone,
                   pressed && s.pressed,
@@ -138,7 +141,7 @@ export default function HomeScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="View conversation transcript or type a message"
-                  onPress={() => openConversation(true)}
+                  onPress={() => openConversation("type")}
                   style={({ pressed }) => [styles.chat, pressed && s.pressed]}
                 >
                   <Icon name="message-circle" size={25} />
@@ -146,7 +149,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <Copy style={[s.small, { textAlign: "center" }]}>
-              Voice input isn’t connected yet · Use the chat button
+              Tap the mic to start talking · Or use chat to type
             </Copy>
           </View>
         </View>
