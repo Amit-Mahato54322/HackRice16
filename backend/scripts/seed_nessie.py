@@ -24,18 +24,50 @@ load_dotenv()
 
 from app.config import NESSIE_API_KEY, NESSIE_CUSTOMER_ID
 from app.db import SessionLocal, Base, engine
+from app.models.card_product import CardProduct
+from app.services import vectormint
 import app.models  # noqa: F401
 
 Base.metadata.create_all(bind=engine)
 
 NESSIE_BASE = "https://api.nessieisreal.com"
 
-# Seeded cards — balance comes from Nessie, credit_limit lives in our DB only
+# Seeded cards — balance comes from Nessie, credit_limit lives in our DB only.
+# vectormint_card_id maps each one to a real card product so it actually gets
+# scored, instead of silently falling back to adapter.demo_wallet() (see
+# adapter.build_wallet: an account with no card_product_id is skipped).
 CARDS = [
-    {"nickname": "Chase Sapphire Preferred",    "balance": 2500, "credit_limit": 10000},
-    {"nickname": "Capital One Venture",          "balance": 5200, "credit_limit": 8000},
-    {"nickname": "Bank of America Cash Rewards", "balance": 800,  "credit_limit": 5000},
+    {"nickname": "Chase Sapphire Preferred",    "balance": 2500, "credit_limit": 10000, "vectormint_card_id": "chase-sapphire-preferred"},
+    {"nickname": "Capital One Venture",          "balance": 5200, "credit_limit": 8000,  "vectormint_card_id": "capital-one-venture"},
+    {"nickname": "Bank of America Cash Rewards", "balance": 800,  "credit_limit": 5000,  "vectormint_card_id": "bofa-customized-cash"},
 ]
+
+
+def _map_to_card_product(db, account, vectormint_card_id: str):
+    """Same upsert /cards/map does: cache the reward data, link the account."""
+    if account.card_product_id:
+        return
+    card_data = vectormint.get_card(vectormint_card_id)
+    if not card_data:
+        print(f"        WARN  no VectorMint match for {vectormint_card_id} -- not scored yet")
+        return
+    product = (
+        db.query(CardProduct).filter_by(vectormint_card_id=vectormint_card_id).first()
+    )
+    if not product:
+        product = CardProduct(
+            vectormint_card_id=card_data["vectormint_card_id"],
+            display_name=card_data["display_name"],
+            issuer=card_data["issuer"],
+            art_url=card_data.get("art_url"),
+            cached_reward_json=card_data["rewards"],
+            cached_at=datetime.now(timezone.utc),
+        )
+        db.add(product)
+        db.flush()
+    account.card_product_id = product.id
+    db.commit()
+    print(f"        mapped -> {product.display_name} ({product.issuer})")
 
 
 def nessie_post(path: str, body: dict) -> dict:
@@ -91,6 +123,7 @@ def main():
         )
         if existing:
             print(f"  SKIP  {card['nickname']} — already in DB (id={existing.id})")
+            _map_to_card_product(db, existing, card["vectormint_card_id"])
             continue
 
         res = nessie_post(f"/customers/{customer_id}/accounts", {
@@ -102,7 +135,7 @@ def main():
         nessie_id = res["objectCreated"]["_id"]
         acct_number = str(res["objectCreated"].get("account_number", ""))
 
-        db.add(LinkedAccount(
+        account = LinkedAccount(
             user_id=user.id,
             nessie_account_id=nessie_id,
             nessie_customer_id=customer_id,
@@ -111,7 +144,8 @@ def main():
             credit_limit=card["credit_limit"],
             current_balance=card["balance"],
             last_synced_at=datetime.now(timezone.utc),
-        ))
+        )
+        db.add(account)
         db.commit()
 
         used_pct = round(card["balance"] / card["credit_limit"] * 100, 1)
@@ -124,6 +158,7 @@ def main():
             f"used={used_pct}%  "
             f"remaining=${remaining:,.0f}"
         )
+        _map_to_card_product(db, account, card["vectormint_card_id"])
 
     # 4 — Print all data: Nessie raw + Postgres computed
     print("\n" + "=" * 60)
