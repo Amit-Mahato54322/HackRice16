@@ -77,7 +77,7 @@ export default function RecommendationScreen() {
   const reward = result.rewardLabel;
   const explanation = recommendation.voice.transcript;
   return (
-    <Screen bottom fit>
+    <Screen bottom>
       <View style={{ gap: 3 }}>
         <Header title="Your best card" back />
         <Copy style={styles.subtitle}>
