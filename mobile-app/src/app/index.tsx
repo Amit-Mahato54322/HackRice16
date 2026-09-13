@@ -28,14 +28,15 @@ import { theme } from "@/theme";
 import { WalletCard } from "@/components/wallet-card";
 
 export default function HomeScreen() {
-  const { wallet, walletError, reloadWallet } = useCreditPick();
+  const { wallet, walletError, reloadWallet, totalSaved } = useCreditPick();
   const { fontScale, height, width } = useWindowDimensions();
   const cardWidth = Math.min(Math.min(width, 580) - 64, 360);
-  const accessibleScroll = fontScale > 1.2 || height < 760;
+  const accessibleScroll = fontScale > 1.2 || height < 920;
   const HomeContainer = accessibleScroll ? ScrollView : View;
   const [selected, setSelected] = useState<WalletCardData | null>(null);
   const [showAddCard, setShowAddCard] = useState(false);
   const cards = wallet?.cards ?? [];
+  const profileName = "Alex";
   function openConversation(mode: "type" | "record") {
     router.push({
       pathname: "/conversation",
@@ -55,18 +56,52 @@ export default function HomeScreen() {
       >
         <View style={[styles.content, accessibleScroll && { flex: 0 }]}>
           <View style={styles.brand}>
-            <Copy accessibilityRole="header" style={styles.wordmark}>
+            <Copy
+              accessibilityRole="header"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={styles.wordmark}
+            >
               CreditPick<Copy style={styles.brandDot}>.</Copy>
             </Copy>
+            <View
+              accessible
+              accessibilityLabel={`${profileName}, profile`}
+              style={styles.profile}
+            >
+              <Copy numberOfLines={1} style={styles.profileName}>
+                {profileName}
+              </Copy>
+              <View style={styles.avatar}>
+                <Icon name="user" size={22} color={theme.colors.ink} />
+              </View>
+            </View>
           </View>
           <View style={styles.intro}>
-            <Copy style={styles.heading}>
-              Choose your next{"\n"}card wisely.
+            <Copy
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={styles.heading}
+            >
+              Choose your next card wisely.
             </Copy>
             <Copy style={styles.supporting}>
               A little clarity before you pay.
             </Copy>
           </View>
+          {totalSaved > 0 && (
+            <Panel style={styles.savedPanel}>
+              <Icon name="trending-up" />
+              <View style={{ flex: 1 }}>
+                <Copy style={s.bold}>
+                  {money(totalSaved, 2)} earned in rewards and savings
+                </Copy>
+                <Copy style={s.small}>
+                  From the cards CreditPick recommended
+                </Copy>
+              </View>
+            </Panel>
+          )}
           <View style={styles.cardsHeader}>
             <Copy accessibilityRole="header" style={styles.sectionTitle}>
               Your cards
@@ -99,6 +134,8 @@ export default function HomeScreen() {
                 contentContainerStyle={{
                   gap: 14,
                   paddingHorizontal: (Math.min(width, 580) - cardWidth) / 2,
+                  paddingTop: 8,
+                  paddingBottom: 20,
                   alignItems: "flex-start",
                 }}
               >
@@ -117,7 +154,7 @@ export default function HomeScreen() {
               </ScrollView>
             )}
           </View>
-          <Copy style={[s.small, { paddingTop: 10, paddingHorizontal: 8 }]}>
+          <Copy style={[s.small, styles.carouselHint]}>
             Swipe left or right · Tap a card for details
           </Copy>
           <View style={{ flex: 1 }} />
@@ -125,7 +162,6 @@ export default function HomeScreen() {
             <Copy style={styles.askTitle}>What are you buying?</Copy>
             <Copy style={styles.supporting}>Tell us the store and amount.</Copy>
             <View style={styles.controls}>
-              <View style={styles.sideSlot} />
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Start speaking"
@@ -135,18 +171,18 @@ export default function HomeScreen() {
                   pressed && s.pressed,
                 ]}
               >
-                <Icon name="mic" size={34} color={theme.colors.onAccent} />
+                <Icon name="mic" size={24} color={theme.colors.onAccent} />
+                <Copy style={styles.microphoneLabel}>Start speaking</Copy>
               </Pressable>
-              <View style={styles.sideSlot}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="View conversation transcript or type a message"
-                  onPress={() => openConversation("type")}
-                  style={({ pressed }) => [styles.chat, pressed && s.pressed]}
-                >
-                  <Icon name="message-circle" size={25} />
-                </Pressable>
-              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View conversation transcript or type a message"
+                onPress={() => openConversation("type")}
+                style={({ pressed }) => [styles.chat, pressed && s.pressed]}
+              >
+                <Icon name="message-circle" size={22} />
+                <Copy style={styles.chatLabel}>Type</Copy>
+              </Pressable>
             </View>
             <Copy style={[s.small, { textAlign: "center" }]}>
               Tap the mic to start talking · Or use chat to type
@@ -178,8 +214,11 @@ export default function HomeScreen() {
           <>
             <CardVisual card={selected} large />
             <Panel style={{ gap: 12 }}>
+              <View style={styles.balanceSummary}>
+                <Copy style={styles.supporting}>Current balance</Copy>
+                <Copy style={styles.balance}>{money(selected.balance)}</Copy>
+              </View>
               <Copy>Credit limit: {money(selected.limit)}</Copy>
-              <Copy>Current balance: {money(selected.balance)}</Copy>
               <Copy>Available credit: {money(selected.available)}</Copy>
               <Copy>Utilization: {selected.utilization.toFixed(1)}%</Copy>
               <Copy style={s.small}>{selected.rewardSummary}</Copy>
@@ -198,9 +237,17 @@ const styles = StyleSheet.create({
     maxWidth: 580,
     alignSelf: "center",
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 16,
   },
-  brand: { alignItems: "center", paddingVertical: 12 },
+  brand: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingHorizontal: 8,
+    paddingTop: 18,
+    paddingBottom: 20,
+  },
   wordmark: {
     fontFamily: Platform.select({
       ios: "Georgia",
@@ -209,19 +256,51 @@ const styles = StyleSheet.create({
     }),
     fontStyle: "italic",
     fontWeight: "700",
-    fontSize: 42,
-    lineHeight: 52,
-    letterSpacing: -1.6,
+    fontSize: 44,
+    lineHeight: 54,
+    letterSpacing: -1.5,
     color: theme.colors.ink,
-    textAlign: "center",
+    flexShrink: 1,
   },
-  brandDot: { fontSize: 42, lineHeight: 52, color: theme.colors.accent },
-  intro: { gap: 6, paddingHorizontal: 8, paddingTop: 12, paddingBottom: 20 },
-  heading: {
-    fontSize: 30,
-    lineHeight: 36,
+  profile: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexShrink: 1,
+  },
+  profileName: {
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: "600",
-    letterSpacing: -0.9,
+    color: theme.colors.muted,
+    flexShrink: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.positiveBackground,
+    borderWidth: 2,
+    borderColor: theme.colors.surface,
+    boxShadow: theme.shadow.soft,
+  },
+  intro: { gap: 8, paddingHorizontal: 8, paddingTop: 4, paddingBottom: 24 },
+  brandDot: { fontSize: 42, lineHeight: 52, color: theme.colors.accent },
+  savedPanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  heading: {
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: "600",
+    letterSpacing: -0.2,
+    color: theme.colors.ink,
   },
   supporting: { fontSize: 14, lineHeight: 21, color: theme.colors.muted },
   cardsHeader: {
@@ -229,37 +308,65 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 8,
-    paddingBottom: 6,
+    paddingBottom: 8,
   },
-  sectionTitle: { fontSize: 23, lineHeight: 30, fontWeight: "600" },
+  sectionTitle: { fontSize: 20, lineHeight: 28, fontWeight: "600" },
   cardList: { flexShrink: 0, marginHorizontal: -16 },
-  voiceDock: { alignItems: "center", paddingTop: 20, gap: 4 },
+  carouselHint: { paddingHorizontal: 8, textAlign: "center" },
+  voiceDock: {
+    alignItems: "center",
+    marginTop: 24,
+    padding: 20,
+    gap: 4,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface,
+    boxShadow: theme.shadow.soft,
+  },
   askTitle: { fontSize: 20, lineHeight: 27, fontWeight: "600" },
   controls: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
+    gap: 12,
+    paddingVertical: 16,
   },
-  sideSlot: { width: 54, alignItems: "center" },
   microphone: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    flex: 1,
+    minHeight: 64,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 10,
+    flexDirection: "row",
+    borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0px 6px 20px #00000040",
+  },
+  microphoneLabel: {
+    flexShrink: 1,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "600",
+    color: theme.colors.onAccent,
+    textAlign: "center",
   },
   chat: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    minWidth: 72,
+    minHeight: 64,
+    padding: 10,
+    gap: 4,
+    borderRadius: theme.radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.colors.accentSurface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  chatLabel: { fontSize: 12, lineHeight: 16, color: theme.colors.muted },
+  balanceSummary: { gap: 4, paddingBottom: 12 },
+  balance: {
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: "700",
+    letterSpacing: -1.5,
+    fontVariant: ["tabular-nums"],
   },
 });

@@ -71,12 +71,12 @@ export function WalletCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: theme.radius.md,
     padding: 20,
     gap: 14,
     justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: theme.colors.track,
+    backgroundColor: theme.colors.surface,
+    boxShadow: theme.shadow.card,
   },
   top: {
     flexDirection: "row",

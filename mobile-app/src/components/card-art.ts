@@ -50,6 +50,8 @@ export const CARD_IMAGES: Record<string, ImageSourcePropType> = {
   "chase-sapphire-preferred": require("../../assets/cards/chase-sapphire-preferred.png"),
   "capital-one-venture": require("../../assets/cards/capital-one-venture.png"),
   "bofa-customized-cash": require("../../assets/cards/bofa-customized-cash.png"),
+  "chase-freedom-unlimited": require("../../assets/cards/chase-freedom-unlimited.png"),
+  "amex-blue-cash-preferred": require("../../assets/cards/amex-blue-cash-preferred.png"),
 };
 
 export type CardArt = {

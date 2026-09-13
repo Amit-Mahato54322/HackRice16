@@ -78,7 +78,7 @@ export default function RecommendationScreen() {
   const explanation = recommendation.voice.transcript;
   return (
     <Screen bottom>
-      <View style={{ gap: 3 }}>
+      <View style={{ gap: 6 }}>
         <Header title="Your best card" back />
         <Copy style={styles.subtitle}>
           {purchase.store} ·{" "}
@@ -86,7 +86,7 @@ export default function RecommendationScreen() {
           {purchase.category}
         </Copy>
       </View>
-      <View style={{ gap: 12 }}>
+      <View style={{ gap: 16 }}>
         <CardVisual card={best} large best compact />
         <View style={styles.reward}>
           <View style={styles.rewardIcon}>
@@ -94,14 +94,12 @@ export default function RecommendationScreen() {
           </View>
           <View style={{ flex: 1, gap: 3 }}>
             <Copy style={styles.rewardTitle}>Earn {reward}</Copy>
-            <Copy style={{ color: theme.colors.accent, fontSize: 13 }}>
-              {result.rewardDetail}
-            </Copy>
+            <Copy style={styles.rewardDetail}>{result.rewardDetail}</Copy>
           </View>
         </View>
       </View>
       <Panel style={{ padding: 0, overflow: "hidden" }}>
-        <View style={{ padding: 12, gap: 8 }}>
+        <View style={{ padding: 20, gap: 18 }}>
           <Copy style={s.sectionTitle}>Why this card</Copy>
           {recommendation.reasons.map((reason) => (
             <Reason key={reason.icon} {...reason} />
@@ -116,7 +114,7 @@ export default function RecommendationScreen() {
           <Icon
             name={below ? "check-circle" : "alert-circle"}
             size={16}
-            color={below ? theme.colors.accent : theme.colors.warning}
+            color={below ? theme.colors.positive : theme.colors.warning}
           />
           <Copy
             style={[
@@ -129,23 +127,21 @@ export default function RecommendationScreen() {
         </View>
       </Panel>
       {other && alternative && (
-        <View style={{ gap: 4 }}>
+        <View style={{ gap: 10 }}>
           <Copy style={s.sectionTitle}>Other option</Copy>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="View comparison"
             onPress={() => setComparison(true)}
           >
-            <Panel style={{ padding: 10 }}>
+            <Panel style={{ padding: 18 }}>
               <View style={s.row}>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Copy style={s.bold}>{other.name}</Copy>
                   <Copy style={s.small}>{alternative.rewardDetail}</Copy>
                 </View>
                 <View style={{ alignItems: "flex-end", flexShrink: 1 }}>
-                  <Copy
-                    style={{ fontWeight: "600", color: theme.colors.accent }}
-                  >
+                  <Copy style={styles.alternativeReward}>
                     {alternative.rewardLabel}
                   </Copy>
                   <Copy style={s.small}>View comparison</Copy>
@@ -199,7 +195,7 @@ export default function RecommendationScreen() {
                 <Copy style={[s.bold, { flex: 1 }]}>{card.name}</Copy>
                 {card.id === best.id && <Badge>Best match</Badge>}
               </View>
-              <Copy>
+              <Copy style={styles.comparisonReward}>
                 {card.reward === "points"
                   ? `${value.rewards.toLocaleString()} points (≈ ${money(value.rewardValue, 2)})`
                   : `${money(value.rewards, 2)} cash back`}
@@ -217,8 +213,8 @@ export default function RecommendationScreen() {
         })}
         <Copy style={s.small}>
           Reward estimates come from each card’s published earn rates.
-          Utilization = (balance + purchase) ÷ credit limit. The alert
-          threshold is a personal reminder, not a credit-score guarantee.
+          Utilization = (balance + purchase) ÷ credit limit. The alert threshold
+          is a personal reminder, not a credit-score guarantee.
         </Copy>
         <Button title="Done" onPress={() => setComparison(false)} />
       </Sheet>
@@ -247,11 +243,11 @@ function Reason({
 }) {
   return (
     <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
-      <View style={{ paddingTop: 2 }}>
-        <Icon name={icon} size={19} />
+      <View style={styles.reasonIcon}>
+        <Icon name={icon} size={19} color={theme.colors.muted} />
       </View>
       <View style={{ flex: 1, gap: 3 }}>
-        <Copy style={{ fontSize: 14, lineHeight: 21, fontWeight: "500" }}>
+        <Copy style={{ fontSize: 15, lineHeight: 22, fontWeight: "500" }}>
           {title}
         </Copy>
         {detail && <Copy style={s.small}>{detail}</Copy>}
@@ -260,42 +256,77 @@ function Reason({
   );
 }
 const styles = StyleSheet.create({
-  subtitle: { fontSize: 13, color: theme.colors.muted, marginLeft: 12 },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: theme.colors.muted,
+    marginLeft: 12,
+  },
+  // A gain, so it takes the positive pair: pastel ground, darker ink.
   reward: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: 10,
-    borderRadius: 16,
-    backgroundColor: theme.colors.accentSurface,
+    gap: 14,
+    padding: 20,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.positiveBackground,
   },
   rewardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.colors.accentSurfaceStrong,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: theme.colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
   rewardTitle: {
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 28,
+    lineHeight: 35,
+    fontWeight: "700",
+    color: theme.colors.ink,
+    letterSpacing: -0.8,
+  },
+  rewardDetail: {
+    color: theme.colors.positive,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  alternativeReward: {
+    fontSize: 18,
+    lineHeight: 25,
     fontWeight: "600",
-    color: theme.colors.accent,
+    color: theme.colors.ink,
     letterSpacing: -0.4,
   },
+  comparisonReward: {
+    fontSize: 22,
+    lineHeight: 30,
+    fontWeight: "600",
+    letterSpacing: -0.5,
+  },
+  reasonIcon: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: theme.colors.accentSurface,
+  },
+  // Below the threshold is the good outcome, so this footer defaults to the
+  // positive pair; the screen swaps both ground and ink to the negative pair
+  // when it is at or above.
   threshold: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: theme.colors.accentSurface,
+    backgroundColor: theme.colors.positiveBackground,
     paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingVertical: 14,
   },
   thresholdText: {
     fontSize: 12,
     lineHeight: 18,
-    color: theme.colors.accent,
+    color: theme.colors.positive,
     flex: 1,
   },
 });

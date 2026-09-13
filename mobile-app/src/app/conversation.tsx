@@ -81,9 +81,7 @@ export default function ConversationScreen() {
   const messageRequest = useRef<AbortController | null>(null);
   const playbackRequest = useRef<AbortController | null>(null);
   const [sending, setSending] = useState(false);
-  const [pendingKind, setPendingKind] = useState<"voice" | "text" | null>(
-    null,
-  );
+  const [pendingKind, setPendingKind] = useState<"voice" | "text" | null>(null);
   const [stageIndex, setStageIndex] = useState(0);
   const wave = useRef(new Animated.Value(0)).current;
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -295,7 +293,9 @@ export default function ConversationScreen() {
           playbackRequest.current?.abort();
           const playing = new AbortController();
           playbackRequest.current = playing;
-          void services.playback.play(turn.voice, playing.signal).catch(() => {});
+          void services.playback
+            .play(turn.voice, playing.signal)
+            .catch(() => {});
         }
       } catch (error) {
         if (!pending.signal.aborted) {
@@ -320,13 +320,18 @@ export default function ConversationScreen() {
       Keyboard.dismiss();
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        setReply("Microphone access is needed to record. You can type instead.");
+        setReply(
+          "Microphone access is needed to record. You can type instead.",
+        );
         return;
       }
       // iOS rejects allowsRecording without playsInSilentMode explicitly set
       // (see ExpoAudio/AudioUtils.swift) -- this call replaces the whole mode
       // rather than merging, so playsInSilentMode must be listed here too.
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setReply("");
@@ -395,14 +400,16 @@ export default function ConversationScreen() {
               <View
                 style={[
                   styles.middleCircle,
-                  listening && { backgroundColor: theme.colors.accentSurfaceStrong },
+                  listening && {
+                    backgroundColor: theme.colors.accentSurfaceStrong,
+                  },
                 ]}
               >
                 <View style={styles.innerCircle}>
                   <Icon
                     name={listening ? "square" : "mic"}
                     size={listening ? 26 : 38}
-                    color={listening ? theme.colors.accent : undefined}
+                    color={theme.colors.onAccent}
                   />
                 </View>
               </View>
@@ -428,7 +435,7 @@ export default function ConversationScreen() {
                 />
               ))}
             </View>
-            <Copy accessibilityLiveRegion="polite" style={s.bold}>
+            <Copy accessibilityLiveRegion="polite" style={styles.voiceTitle}>
               {listening
                 ? "Listening… tap to stop"
                 : ready
@@ -529,6 +536,7 @@ export default function ConversationScreen() {
                       key={category}
                       style={[
                         styles.chip,
+                        { backgroundColor: theme.colors.accentSurface },
                         purchase.category === category && {
                           backgroundColor: theme.colors.accentSurfaceStrong,
                         },
@@ -545,7 +553,7 @@ export default function ConversationScreen() {
               ) : (
                 <>
                   <TextInput
-                    keyboardAppearance="dark"
+                    keyboardAppearance="light"
                     selectionColor={theme.colors.accent}
                     autoFocus
                     accessibilityLabel={`New ${editing}`}
@@ -576,9 +584,11 @@ export default function ConversationScreen() {
             <View style={[s.bubble, styles.statusBubble]}>
               <ActivityIndicator size="small" color={theme.colors.accent} />
               <Copy style={{ fontSize: 15, lineHeight: 22 }}>
-                {(pendingKind === "voice" ? VOICE_STAGES : TEXT_STAGES)[
-                  stageIndex
-                ]}
+                {
+                  (pendingKind === "voice" ? VOICE_STAGES : TEXT_STAGES)[
+                    stageIndex
+                  ]
+                }
               </Copy>
             </View>
           )}
@@ -604,12 +614,12 @@ export default function ConversationScreen() {
         <View style={{ paddingHorizontal: 24 }}>
           <View style={styles.composer}>
             <TextInput
-              keyboardAppearance="dark"
+              keyboardAppearance="light"
               selectionColor={theme.colors.accent}
               ref={composer}
               accessibilityLabel="Type a message"
               placeholder="Type a message…"
-              placeholderTextColor={theme.colors.muted}
+              placeholderTextColor={theme.colors.subtle}
               value={message}
               onChangeText={setMessage}
               onSubmitEditing={send}
@@ -628,7 +638,9 @@ export default function ConversationScreen() {
             ) : (
               <IconButton
                 name={listening ? "square" : "mic"}
-                label={listening ? "Stop recording and send" : "Record a message"}
+                label={
+                  listening ? "Stop recording and send" : "Record a message"
+                }
                 onPress={() => void toggleRecording()}
                 filled={listening}
               />
@@ -651,14 +663,29 @@ const styles = StyleSheet.create({
   content: {
     padding: 24,
     paddingTop: 4,
-    paddingBottom: 12,
-    gap: 12,
+    paddingBottom: 20,
+    gap: 16,
     flexGrow: 1,
     width: "100%",
     maxWidth: 560,
     alignSelf: "center",
   },
-  voice: { alignItems: "center", gap: 4, paddingBottom: 4 },
+  voice: {
+    alignItems: "center",
+    gap: 6,
+    padding: 20,
+    paddingTop: 16,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface,
+    boxShadow: theme.shadow.soft,
+  },
+  voiceTitle: {
+    fontSize: 20,
+    lineHeight: 27,
+    fontWeight: "600",
+    letterSpacing: -0.4,
+    textAlign: "center",
+  },
   outerCircle: {
     width: 112,
     height: 112,
@@ -679,7 +706,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: theme.colors.accentSurfaceStrong,
+    backgroundColor: theme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -692,63 +719,61 @@ const styles = StyleSheet.create({
     marginTop: -6,
   },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chipEmpty: { borderStyle: "dashed" },
+  chipEmpty: { backgroundColor: theme.colors.accentSurface },
   chip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     minHeight: 44,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 12,
-    backgroundColor: theme.colors.accentSurface,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surface,
     maxWidth: "100%",
   },
   chipText: {
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 18,
     color: theme.colors.accent,
     fontWeight: "500",
     flexShrink: 1,
   },
   editor: {
-    padding: 16,
-    gap: 12,
+    padding: 20,
+    gap: 16,
     backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 16,
+    borderRadius: theme.radius.md,
+    boxShadow: theme.shadow.soft,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 12,
-    padding: 14,
-    minHeight: 48,
+    fontFamily: theme.fontFamily,
+    backgroundColor: theme.colors.accentSurface,
+    borderRadius: 16,
+    padding: 16,
+    minHeight: 52,
     fontSize: 16,
     color: theme.colors.ink,
   },
+  // Sticky bottom bar: pill-shaped and lifted off the thread behind it.
   composer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     width: "100%",
-    marginBottom: 8,
-    padding: 6,
-    paddingLeft: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 28,
+    marginBottom: 12,
+    padding: 8,
+    paddingLeft: 20,
+    borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.surface,
     maxWidth: 512,
     alignSelf: "center",
+    boxShadow: theme.shadow.lifted,
   },
   composerInput: {
+    fontFamily: theme.fontFamily,
     flex: 1,
     minHeight: 44,
-    fontSize: 14,
+    fontSize: 16,
     color: theme.colors.ink,
   },
 });
