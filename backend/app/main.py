@@ -6,7 +6,15 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db import Base, engine
 import app.models  # noqa: F401 — registers all models on Base.metadata
-from app.routers import auth, cards, conversation, dashboard, nessie, recommend
+from app.routers import (
+    auth,
+    cards,
+    conversation,
+    dashboard,
+    nessie,
+    portfolio,
+    recommend,
+)
 from app.static_files import STATIC_DIR
 
 Base.metadata.create_all(bind=engine)
@@ -31,6 +39,7 @@ app.include_router(cards.router)
 app.include_router(nessie.router)
 app.include_router(recommend.router)
 app.include_router(conversation.router)
+app.include_router(portfolio.router)
 
 
 @app.get("/health")
