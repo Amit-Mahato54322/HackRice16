@@ -1,3 +1,4 @@
+
 """VectorMint card-search and card-mapping routes (M4).
 
 /cards/search proxies the VectorMint catalog (or the built-in fallback).

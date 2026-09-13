@@ -152,7 +152,7 @@ export function Header({
     <View style={s.header}>
       {back && (
         <IconButton
-          name="arrow-left"
+          name="chevron-left"
           label={onBack ? "Back to Home" : "Go back"}
           onPress={
             onBack ??
@@ -260,20 +260,20 @@ export function CardVisual({
         style={[
           s.card,
           large ? s.largeCard : s.smallCard,
-          compact && { minHeight: 120 },
-          { padding: 0, overflow: "hidden", backgroundColor: art.background },
+          {
+            padding: 0,
+            minHeight: 0,
+            overflow: "hidden",
+            backgroundColor: art.background,
+          },
         ]}
       >
         <Image
           source={source}
-          // A percentage height inside a minHeight-only parent (s.largeCard)
-          // is ambiguous for Yoga's native layout and was inflating to fill
-          // the whole screen on device (RN Web's CSS engine resolved the
-          // same styles fine, which is why this only showed up on phone).
-          // absoluteFillObject sizes against the parent's actual computed
-          // box instead.
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
+          // Size from the available width so the entire issuer design stays
+          // visible without a percentage height in a min-height container.
+          style={{ width: "100%", height: "auto", aspectRatio: 1.586 }}
+          resizeMode="contain"
           accessible={false}
         />
         {large && best && (
@@ -441,16 +441,20 @@ export const s = StyleSheet.create({
     maxWidth: 560,
     alignSelf: "center",
   },
-  copy: { color: c.ink, fontSize: theme.type.body, lineHeight: 23 },
+  copy: {
+    color: c.ink,
+    fontFamily: theme.fontFamily,
+    fontSize: theme.type.body,
+    lineHeight: 23,
+  },
   bold: { fontWeight: "600" },
   small: { fontSize: 12, lineHeight: 18, color: c.muted },
   tiny: { fontSize: 10, lineHeight: 16, color: c.muted },
   panel: {
     padding: 20,
     backgroundColor: c.surface,
-    borderWidth: 1,
-    borderColor: c.border,
     borderRadius: theme.radius.md,
+    boxShadow: theme.shadow.soft,
   },
   row: {
     flexDirection: "row",
@@ -459,10 +463,10 @@ export const s = StyleSheet.create({
     gap: 10,
   },
   badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     backgroundColor: c.accentSurface,
-    borderRadius: 6,
+    borderRadius: theme.radius.pill,
   },
   badgeText: {
     color: c.accent,
@@ -473,7 +477,7 @@ export const s = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   button: {
     minHeight: 56,
-    borderRadius: 15,
+    borderRadius: theme.radius.pill,
     backgroundColor: c.accent,
     flexDirection: "row",
     justifyContent: "center",
@@ -504,11 +508,28 @@ export const s = StyleSheet.create({
     alignItems: "center",
   },
   header: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48 },
-  headerTitle: { fontSize: 22, lineHeight: 30, fontWeight: "600", flex: 1 },
+  headerTitle: {
+    fontSize: 24,
+    lineHeight: 32,
+    fontWeight: "700",
+    letterSpacing: -0.7,
+    flex: 1,
+  },
   sectionTitle: { fontSize: 19, lineHeight: 27, fontWeight: "600" },
   card: { overflow: "hidden", justifyContent: "space-between" },
-  smallCard: { width: 66, height: 42, borderRadius: 7, padding: 6 },
-  largeCard: { borderRadius: 20, padding: 24, minHeight: 188 },
+  smallCard: {
+    width: 66,
+    height: 42,
+    borderRadius: 7,
+    padding: 6,
+    boxShadow: theme.shadow.cardPressed,
+  },
+  largeCard: {
+    borderRadius: 20,
+    padding: 24,
+    minHeight: 188,
+    boxShadow: theme.shadow.card,
+  },
   cardArc: {
     position: "absolute",
     width: 250,
@@ -546,10 +567,12 @@ export const s = StyleSheet.create({
   stat: { flex: 1, minWidth: 70, gap: 4 },
   statBorder: { paddingLeft: 12, borderLeftWidth: 1, borderColor: c.border },
   statValue: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: "600",
-    letterSpacing: -0.8,
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: "700",
+    letterSpacing: -1,
+    color: c.ink,
+    fontVariant: ["tabular-nums"],
   },
   track: { height: 7, borderRadius: 5, backgroundColor: c.track },
   trackFill: { height: 7, borderRadius: 5, backgroundColor: c.accentBright },
@@ -566,33 +589,33 @@ export const s = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     backgroundColor: c.surface,
-    borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: 17,
-    borderBottomLeftRadius: 5,
+    borderRadius: theme.radius.md,
+    borderBottomLeftRadius: 6,
+    boxShadow: theme.shadow.soft,
   },
   userBubble: {
     alignSelf: "flex-end",
-    backgroundColor: c.accentSurface,
-    borderColor: c.accentSurface,
-    borderBottomLeftRadius: 17,
-    borderBottomRightRadius: 5,
+    backgroundColor: c.accentSurfaceStrong,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 6,
+    boxShadow: "0px 0px 0px #00000000",
   },
   modal: { flex: 1, backgroundColor: c.scrim, justifyContent: "flex-end" },
   sheet: {
     backgroundColor: c.elevated,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: theme.radius.lg,
+    borderTopRightRadius: theme.radius.lg,
     padding: 24,
     paddingTop: 12,
     maxHeight: "86%",
     gap: 12,
+    boxShadow: theme.shadow.lifted,
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: c.marker,
+    backgroundColor: c.track,
     alignSelf: "center",
   },
 });

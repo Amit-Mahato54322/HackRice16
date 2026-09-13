@@ -1,13 +1,13 @@
-import { DarkTheme, Stack, ThemeProvider } from "expo-router";
+import { DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { CreditPickProvider } from "@/state/creditpick-provider";
 import { theme } from "@/theme";
 
 const navigationTheme = {
-  ...DarkTheme,
+  ...DefaultTheme,
   colors: {
-    ...DarkTheme.colors,
+    ...DefaultTheme.colors,
     primary: theme.colors.accent,
     background: theme.colors.background,
     card: theme.colors.surface,
@@ -22,7 +22,7 @@ export default function RootLayout() {
     <ThemeProvider value={navigationTheme}>
       <SafeAreaProvider>
         <CreditPickProvider>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
               headerShown: false,
