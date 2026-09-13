@@ -266,7 +266,10 @@ export default function ConversationScreen() {
         setReply("Microphone access is needed to record. You can type instead.");
         return;
       }
-      await setAudioModeAsync({ allowsRecording: true });
+      // iOS rejects allowsRecording without playsInSilentMode explicitly set
+      // (see ExpoAudio/AudioUtils.swift) -- this call replaces the whole mode
+      // rather than merging, so playsInSilentMode must be listed here too.
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setReply("");

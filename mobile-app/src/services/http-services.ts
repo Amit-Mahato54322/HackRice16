@@ -1,4 +1,3 @@
-import { Platform } from "react-native";
 import { money } from "../domain/models.ts";
 import type { Category, Purchase } from "../domain/models";
 import { cardArt } from "../components/card-art";
@@ -388,23 +387,14 @@ export function createHttpServices(
       // as form fields so an earlier typed/edited amount or store isn't lost.
       async sendVoice(fileUri, mimeType, purchase, signal) {
         const form = new FormData();
-        if (Platform.OS === "web") {
-          // On web the recorder hands back a blob: URL, and the browser's
-          // real FormData needs an actual Blob -- the {uri, type, name}
-          // object below is a React Native-only convention that a browser
-          // silently stringifies into garbage instead of a file part.
-          const blob = await fetch(fileUri).then((r) => r.blob());
-          const type = blob.type || mimeType;
-          form.append("audio", blob, `clip.${type.split("/")[1] ?? "webm"}`);
-        } else {
-          // React Native's fetch accepts this {uri, type, name} shape in
-          // place of a real Blob -- it streams the file at `uri` directly.
-          form.append("audio", {
-            uri: fileUri,
-            type: mimeType,
-            name: `clip.${mimeType.split("/")[1] ?? "m4a"}`,
-          } as unknown as Blob);
-        }
+        // The classic RN convention of appending {uri, type, name} in place
+        // of a Blob throws "Unsupported FormData part implementation" on
+        // this Expo/RN version (see mobile-app/AGENTS.md -- Expo has
+        // changed). A real Blob from fetching the local file works on both
+        // web and native.
+        const blob = await fetch(fileUri).then((r) => r.blob());
+        const type = blob.type || mimeType;
+        form.append("audio", blob, `clip.${type.split("/")[1] ?? "m4a"}`);
         form.append("store", purchase.store);
         form.append("amount", String(purchase.amount));
         form.append("category", TO_ENGINE[purchase.category]);
