@@ -33,6 +33,12 @@ MERCHANT_CATEGORIES = {
     "walgreens": "drugstores",
     "best buy": "electronics",
     "apple store": "electronics",
+    "nike": "online_shopping",
+    "adidas": "online_shopping",
+    "amazon": "online_shopping",
+    "target": "online_shopping",
+    "walmart": "online_shopping",
+    "etsy": "online_shopping",
 }
 
 # Nessie's own merchant categories don't match our reward-category vocabulary,

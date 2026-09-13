@@ -1,19 +1,11 @@
 """CreditPick scoring engine.
 
-Pure Python: data in, data out. No framework imports, no database, no network,
-no LLM calls. Every number is arithmetic you can point at -- if a judge asks
-how a figure was produced, we trace it line by line.
+Pure Python: data in, data out. 
 
 Each card is scored in dollars:
 
     score = reward - risk
 
-Scope note: Nessie is the only external API in the stack, supplying balances,
-purchase history and merchant categories. Reward rates come from a small local
-catalog (see rewards.py) because no API publishes them. Category caps, sign-up
-bonuses and purchase-protection terms are deliberately absent: modelling them
-would mean inventing cap-usage and claim figures no source publishes, so the
-output would be driven by our assumptions rather than by data.
 
 Statement timing is absent for the same reason: Nessie exposes no statement
 close date or billing cycle, so the float term and the "pay it down before it
@@ -117,8 +109,12 @@ def score_sensitivity(baseline_score):
     return damage(baseline_score) / damage(REFERENCE_SCORE)
 
 
-def aggregate_utilization(state, exclude_id=None, extra=0.0):
-    """Total balance over total limit across the whole wallet."""
+def aggregate_utilization(state, charge_id=None, extra=0.0):
+    """Total balance over total limit across the whole wallet.
+
+    If charge_id is given, `extra` is added to that card's balance (models
+    the purchase landing on it).
+    """
     balance = 0.0
     limit = 0.0
     for card_id, card_state in state["cards"].items():
@@ -127,7 +123,7 @@ def aggregate_utilization(state, exclude_id=None, extra=0.0):
             continue
         balance += card_state.get("balance", 0.0)
         limit += card_limit
-        if card_id == exclude_id:
+        if card_id == charge_id:
             balance += extra
     return (balance / limit) if limit > 0 else 0.0
 
@@ -150,7 +146,7 @@ def risk_term(card_state, amount, state, card_id=None):
     per_card = fico_cost((balance + amount) / limit) - fico_cost(balance / limit)
 
     old_aggregate = aggregate_utilization(state)
-    new_aggregate = aggregate_utilization(state, exclude_id=card_id, extra=amount)
+    new_aggregate = aggregate_utilization(state, charge_id=card_id, extra=amount)
     aggregate = fico_cost(new_aggregate, AGGREGATE_FICO_STEPS) - fico_cost(
         old_aggregate, AGGREGATE_FICO_STEPS
     )
@@ -222,7 +218,7 @@ def score_card(card_id, card, card_state, amount, category, state):
         "estimated_value": detail["reward"],
         "breakdown": {
             "reward": detail["reward"],
-            "risk": -risk,
+            "risk": -risk or 0.0,  # avoid -0.0
         },
         "why": build_why(detail, category),
         "detail": detail,
@@ -250,7 +246,15 @@ def rank(state, category, amount, cards):
             continue
         scored.append(score_card(card_id, card, card_state, amount, category, state))
 
-    scored.sort(key=lambda r: r["score"], reverse=True)
+    def _projected_util(scored_card):
+        cs = state["cards"].get(scored_card["card"], {})
+        limit = cs.get("limit") or 0.0
+        if limit <= 0:
+            return 1.0  # unknown limit -> least preferred on a tie
+        return (cs.get("balance", 0.0) + amount) / limit
+
+    # Tie on score -> prefer lower projected utilization.
+    scored.sort(key=lambda r: (round(r["score"], 2), -_projected_util(r)), reverse=True)
     return {
         "category": category,
         "amount": amount,

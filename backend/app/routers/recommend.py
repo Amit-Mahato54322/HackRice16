@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import ELEVENLABS_API_KEY
 from app.db import get_db
 from app.models.linked_account import LinkedAccount
-from app.scoring import adapter, engine, limits
+from app.scoring import adapter, engine, limits, savings
 from app.scoring.categorize import categorize
 from app.services.elevenlabs import synthesize_speech
 from app.static_files import save_audio
@@ -99,6 +99,13 @@ def _card_out(scored: dict, state: dict, amount: float) -> dict:
         "current_balance": balance,
         "available": round(limit - balance - amount, 2) if limit else None,
         "utilization": round((balance + amount) / limit, 4) if limit else None,
+        # Additive fields from savings.annotate (present on annotated cards).
+        "priority": scored.get("priority"),
+        "below_optimal": scored.get("below_optimal"),
+        "current_utilization_pct": scored.get("current_utilization"),
+        "projected_utilization_pct": scored.get("projected_utilization"),
+        "saved_vs_this": scored.get("saved_vs_this"),
+        "extra_cash_vs_this": scored.get("extra_cash_vs_this"),
     }
 
 
@@ -110,8 +117,12 @@ def recommend(request: RecommendRequest, db: Session = Depends(get_db)):
     limits.apply(state)
     result = engine.rank(state, category, request.amount, cards)
 
-    all_cards = result["all_cards"]
-    top = all_cards[0] if all_cards else None
+    # savings.annotate enriches each ranked card with utilization + how much
+    # the winner beats it by; savings.summary is the per-purchase headline.
+    annotated = savings.annotate(result, state, request.amount)
+    savings_summary = savings.summary(result)
+
+    top = annotated[0] if annotated else None
     transcript = (
         f"Use {top['card_name']}. {top['why']}."
         if top
@@ -123,7 +134,8 @@ def recommend(request: RecommendRequest, db: Session = Depends(get_db)):
         "amount": request.amount,
         "category": category,
         "recommendation": _card_out(top, state, request.amount) if top else None,
-        "ranked": [_card_out(c, state, request.amount) for c in all_cards[1:]],
+        "ranked": [_card_out(c, state, request.amount) for c in annotated[1:]],
+        "savings": savings_summary,
         "disqualified": result["disqualified"] + skipped,
         "voice": _build_voice(transcript),
     }
