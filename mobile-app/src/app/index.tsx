@@ -27,7 +27,7 @@ import { theme } from "@/theme";
 import { WalletCard } from "@/components/wallet-card";
 
 export default function HomeScreen() {
-  const { wallet, walletError, reloadWallet } = useCreditPick();
+  const { wallet, walletError, reloadWallet, totalSaved } = useCreditPick();
   const { fontScale, height, width } = useWindowDimensions();
   const cardWidth = Math.min(Math.min(width, 580) - 64, 360);
   const accessibleScroll = fontScale > 1.2 || height < 920;
@@ -88,6 +88,19 @@ export default function HomeScreen() {
               A little clarity before you pay.
             </Copy>
           </View>
+          {totalSaved > 0 && (
+            <Panel style={styles.savedPanel}>
+              <Icon name="trending-up" />
+              <View style={{ flex: 1 }}>
+                <Copy style={s.bold}>
+                  {money(totalSaved, 2)} earned in rewards and savings
+                </Copy>
+                <Copy style={s.small}>
+                  From the cards CreditPick recommended
+                </Copy>
+              </View>
+            </Panel>
+          )}
           <View style={styles.cardsHeader}>
             <Copy accessibilityRole="header" style={styles.sectionTitle}>
               Your cards
@@ -269,6 +282,14 @@ const styles = StyleSheet.create({
     boxShadow: theme.shadow.soft,
   },
   intro: { gap: 8, paddingHorizontal: 8, paddingTop: 4, paddingBottom: 24 },
+  brandDot: { fontSize: 42, lineHeight: 52, color: theme.colors.accent },
+  intro: { gap: 6, paddingHorizontal: 8, paddingTop: 12, paddingBottom: 20 },
+  savedPanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
   heading: {
     fontSize: 16,
     lineHeight: 24,

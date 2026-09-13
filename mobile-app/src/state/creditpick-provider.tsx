@@ -29,6 +29,11 @@ type CreditPickState = {
   reloadWallet: () => void;
   recommendation: Recommendation | null;
   compare: (signal: AbortSignal) => Promise<void>;
+  // Sum of best.rewardValue across every completed compare() this session --
+  // a real number from the engine's own output, not a display placeholder.
+  // In-memory only; resets on app restart, not on reset()/"Start over" since
+  // that clears the in-progress purchase, not past ones.
+  totalSaved: number;
 };
 const CreditPickContext = createContext<CreditPickState | null>(null);
 export function CreditPickProvider({
@@ -49,6 +54,7 @@ export function CreditPickProvider({
   const [recommendation, setRecommendation] = useState<Recommendation | null>(
     null,
   );
+  const [totalSaved, setTotalSaved] = useState(0);
   const revision = useRef(0);
   useEffect(() => {
     const request = new AbortController();
@@ -92,6 +98,7 @@ export function CreditPickProvider({
         walletError,
         reloadWallet: () => setReload((value) => value + 1),
         recommendation,
+        totalSaved,
         compare: async (signal) => {
           const requestedRevision = revision.current;
           const result = await services.recommendations.compare(
@@ -101,6 +108,7 @@ export function CreditPickProvider({
           );
           if (signal.aborted || revision.current !== requestedRevision)
             throw new Error("Purchase changed. Please compare again.");
+          setTotalSaved((total) => total + result.best.rewardValue);
           setRecommendation(result);
         },
       }}
